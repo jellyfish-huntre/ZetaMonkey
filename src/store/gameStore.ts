@@ -21,6 +21,7 @@ interface GameState {
   resetGame: () => void;
   tick: () => void;
   skipQuestion: () => void;
+  endGame: () => void;
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -107,5 +108,9 @@ export const useGameStore = create<GameState>((set, get) => ({
     } else {
       set({ timeLeft: timeLeft - 1 });
     }
+  },
+
+  endGame: () => {
+    set({ status: 'finished', timeLeft: 0 });
   },
 }));
