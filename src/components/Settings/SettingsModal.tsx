@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../../store/settingsStore';
+import { useUserStore } from '../../store/userStore';
 import type { Operation } from '../../lib/mathEngine';
 import { X, RefreshCcw } from 'lucide-react';
 import styles from './SettingsModal.module.css';
@@ -9,6 +10,14 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ onClose }: SettingsModalProps) {
   const { settings, updateSettings, resetToDefault } = useSettingsStore();
+  const { theme, setTheme } = useUserStore();
+
+  const themes: Array<{ id: 'carbon' | 'classic' | 'nord' | 'light'; label: string; color: string }> = [
+    { id: 'carbon', label: 'Carbon', color: '#323437' },
+    { id: 'classic', label: 'Classic', color: '#cccccc' },
+    { id: 'nord', label: 'Nord Teal', color: '#2e3440' },
+    { id: 'light', label: 'Light', color: '#ffffff' }
+  ];
 
   const toggleOperation = (op: Operation) => {
     const newOps = settings.operations.includes(op)
@@ -57,6 +66,22 @@ export default function SettingsModal({ onClose }: SettingsModalProps) {
                   onClick={() => toggleOperation(op as Operation)}
                 >
                   {op}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className={styles.section}>
+            <h3>Themes</h3>
+            <div className={styles.themesGrid}>
+              {themes.map((t) => (
+                <button
+                  key={t.id}
+                  className={`${styles.themeBtn} ${theme === t.id ? styles.active : ''}`}
+                  onClick={() => setTheme(t.id)}
+                >
+                  <div className={styles.themePreview} style={{ backgroundColor: t.color }}></div>
+                  <span className={styles.themeLabel}>{t.label}</span>
                 </button>
               ))}
             </div>

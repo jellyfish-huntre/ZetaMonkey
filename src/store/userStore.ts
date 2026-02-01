@@ -7,7 +7,7 @@ interface UserState {
   highScore: number;
   totalGames: number;
   totalQuestionsAnswered: number;
-  theme: 'dark' | 'light' | 'midnight';
+  theme: 'carbon' | 'classic' | 'nord' | 'light';
   user: User | null;
   session: Session | null;
   localQualifyingGames: Array<{ score: number; qpm: number; accuracy: number; timestamp: number }>;
@@ -15,7 +15,7 @@ interface UserState {
   // Actions
   updateHighScore: (score: number) => Promise<void>;
   incrementGamesTerm: (questionsCount: number) => Promise<void>;
-  setTheme: (theme: 'dark' | 'light' | 'midnight') => Promise<void>;
+  setTheme: (theme: 'carbon' | 'classic' | 'nord' | 'light') => Promise<void>;
   
   // Auth Actions
   signIn: (email: string, pass: string) => Promise<void>;
@@ -30,7 +30,7 @@ interface UserState {
   fetchLeaderboard: (type?: 'all-time' | 'daily') => Promise<any[]>;
   submitLeaderboardScore: (score: number, qpm: number, accuracy: number) => Promise<void>;
   addLocalQualifyingGame: (score: number, qpm: number, accuracy: number) => void;
-  syncGuestData: (userId: string) => Promise<void>;
+  syncGuestData: (userId: string, guestGames: number, guestQuestions: number) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>()(
@@ -39,7 +39,7 @@ export const useUserStore = create<UserState>()(
       highScore: 0,
       totalGames: 0,
       totalQuestionsAnswered: 0,
-      theme: 'dark',
+      theme: 'carbon',
       user: null,
       session: null,
       localQualifyingGames: [],
@@ -95,7 +95,7 @@ export const useUserStore = create<UserState>()(
       },
 
       signIn: async (email, password) => {
-         const { highScore: localHighScore, theme: localTheme } = get();
+         const { highScore: localHighScore, theme: localTheme, totalGames: localTotalGames, totalQuestionsAnswered: localTotalQuestions } = get();
          const { data, error } = await supabase.auth.signInWithPassword({ email, password });
          if (error) throw error;
          
@@ -135,6 +135,7 @@ export const useUserStore = create<UserState>()(
                set({
                  highScore: finalHighScore,
                  totalGames: profile.total_games || 0,
+                 totalQuestionsAnswered: profile.total_questions || 0,
                  theme: profile.theme || localTheme
                });
                
@@ -147,14 +148,14 @@ export const useUserStore = create<UserState>()(
                    .eq('id', data.user.id);
                }
                
-               // Sync data from guest session
-               await get().syncGuestData(data.user.id);
+               // Sync data from guest session (use captured local guest stats)
+               await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
             }
          }
       },
 
       signUp: async (email, password, username) => {
-         const { highScore: localHighScore, theme: localTheme } = get();
+         const { highScore: localHighScore, theme: localTheme, totalGames: localTotalGames, totalQuestionsAnswered: localTotalQuestions } = get();
          const { data, error } = await supabase.auth.signUp({
             email,
             password,
@@ -173,12 +174,12 @@ export const useUserStore = create<UserState>()(
                username,
                high_score: localHighScore,
                theme: localTheme,
-               total_games: get().totalGames,
-               total_questions: get().totalQuestionsAnswered
+               total_games: localTotalGames,
+               total_questions: localTotalQuestions
              }, { onConflict: 'id' });
              
              // Sync data from guest session
-             await get().syncGuestData(data.user.id);
+             await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
          } else if (data.user && !data.session) {
              throw new Error("Please check your email to confirm your account.");
          }
@@ -192,6 +193,13 @@ export const useUserStore = create<UserState>()(
       checkSession: async () => {
          const { data } = await supabase.auth.getSession();
          if (data.session) {
+            // Capture current user state before potential updates
+            const wasGuest = !get().user;
+            const guestTotalGames = get().totalGames;
+            const guestTotalQuestions = get().totalQuestionsAnswered;
+            const guestHighScore = get().highScore;
+            const guestTheme = get().theme;
+
             set({ user: data.session.user, session: data.session });
             
             const { data: profile, error } = await supabase
@@ -201,29 +209,48 @@ export const useUserStore = create<UserState>()(
               .single();
               
             if (profile) {
-               set({
-                 highScore: profile.high_score || 0,
-                 totalGames: profile.total_games || 0,
-                 theme: profile.theme || 'dark'
-               });
-               document.documentElement.setAttribute('data-theme', profile.theme || 'dark');
-               
-               // Sync data from guest session if remnant exists
-               await get().syncGuestData(data.session.user.id);
+               // If we were a guest (user was null in store), sync local stats to cloud
+               if (wasGuest) {
+                  await get().syncGuestData(data.session.user.id, guestTotalGames, guestTotalQuestions);
+                  // After syncing, update the store with the *new* profile data (which now includes synced guest data)
+                  const { data: updatedProfile } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .eq('id', data.session.user.id)
+                    .single();
+                  if (updatedProfile) {
+                    set({
+                      highScore: Math.max(guestHighScore, updatedProfile.high_score || 0),
+                      totalGames: updatedProfile.total_games || 0,
+                      totalQuestionsAnswered: updatedProfile.total_questions || 0,
+                      theme: updatedProfile.theme || guestTheme
+                    });
+                    document.documentElement.setAttribute('data-theme', updatedProfile.theme || guestTheme);
+                  }
+               } else {
+                  // User was already logged in, just refresh store from cloud
+                  set({
+                    highScore: profile.high_score || 0,
+                    totalGames: profile.total_games || 0,
+                    totalQuestionsAnswered: profile.total_questions || 0,
+                    theme: profile.theme || 'carbon'
+                  });
+                  document.documentElement.setAttribute('data-theme', profile.theme || 'carbon');
+               }
             } else if (error && error.code === 'PGRST116') {
                // Handle missing profile on session check (existing users before trigger)
                const newProfile = {
                  id: data.session.user.id,
                  username: data.session.user.user_metadata?.username || data.session.user.email?.split('@')[0],
-                 theme: 'dark',
-                 total_games: get().totalGames,
-                 high_score: get().highScore,
-                 total_questions: get().totalQuestionsAnswered
+                 theme: guestTheme,
+                 total_games: guestTotalGames,
+                 high_score: guestHighScore,
+                 total_questions: guestTotalQuestions
                };
                await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
                
-               // Sync data from guest session
-               await get().syncGuestData(data.session.user.id);
+               // Clear guest markers (effectively synced by upsert)
+               set({ user: data.session.user, session: data.session });
             }
          }
       },
@@ -303,19 +330,23 @@ export const useUserStore = create<UserState>()(
         });
       },
 
-      syncGuestData: async (userId: string) => {
-        const { localQualifyingGames, totalGames, totalQuestionsAnswered } = get();
+      syncGuestData: async (userId: string, guestGames: number, guestQuestions: number) => {
+        const { localQualifyingGames } = get();
         
-        // 1. Sync stats (add local guest totals to cloud)
+        // 1. Sync stats (add INCREMENTS to cloud)
         const { data: profile } = await supabase
           .from('profiles')
-          .select('total_games, total_questions')
+          .select('total_games, total_questions, high_score, theme')
           .eq('id', userId)
           .single();
 
         if (profile) {
-          const newTotalGames = (profile.total_games || 0) + totalGames;
-          const newTotalQuestions = (profile.total_questions || 0) + totalQuestionsAnswered;
+          // Sanitize insanely high numbers (bug fix)
+          const cloudGames = (profile.total_games || 0) > 1000000 ? 0 : (profile.total_games || 0);
+          const cloudQuestions = (profile.total_questions || 0) > 5000000 ? 0 : (profile.total_questions || 0);
+
+          const newTotalGames = cloudGames + guestGames;
+          const newTotalQuestions = cloudQuestions + guestQuestions;
           
           await supabase
             .from('profiles')
@@ -327,18 +358,19 @@ export const useUserStore = create<UserState>()(
             
           set({ 
             totalGames: newTotalGames,
-            totalQuestionsAnswered: newTotalQuestions
+            totalQuestionsAnswered: newTotalQuestions,
+            highScore: profile.high_score || 0,
+            theme: profile.theme || 'carbon'
           });
+          document.documentElement.setAttribute('data-theme', profile.theme || 'carbon');
         }
 
         // 2. Sync leaderboard scores
         if (localQualifyingGames.length > 0) {
           for (const game of localQualifyingGames) {
             await get().submitLeaderboardScore(game.score, game.qpm, game.accuracy);
-            // Also record in history
             await get().recordGame(game.score, game.qpm, game.accuracy);
           }
-          // Clear sync list
           set({ localQualifyingGames: [] });
         }
       }

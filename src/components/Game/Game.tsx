@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { isDefaultSettings } from '../../lib/mathEngine';
-import { Play, RotateCcw, Settings, LogIn, LogOut, User as UserIcon, Trophy, Sliders } from 'lucide-react';
+import { isDefaultSettings, type Operation } from '../../lib/mathEngine';
+import { Play, RotateCcw, LogIn, LogOut, User as UserIcon, Trophy, Sliders } from 'lucide-react';
 import styles from './Game.module.css';
 import PerformanceGraph from '../Charts/PerformanceGraph'; 
 import AuthModal from '../Auth/AuthModal';
@@ -34,14 +34,13 @@ export default function Game() {
     updateHighScore, 
     incrementGamesTerm, 
     theme, 
-    setTheme, 
     user, 
     signOut, 
     checkSession, 
     recordGame, 
     submitLeaderboardScore 
   } = useUserStore();
-  const { settings: currentSettings } = useSettingsStore();
+  const { settings: currentSettings, updateSettings } = useSettingsStore();
   const navigate = useNavigate();
 
   const [input, setInput] = useState('');
@@ -169,7 +168,7 @@ export default function Game() {
 
     return (
       <div className={styles.container}>
-        <div className={styles.summary} style={{ width: '100%', maxWidth: '800px' }}>
+        <div className={styles.summary}>
           <div className={styles.gameOverBadge}>Run Complete</div>
           <h1 className={styles.scoreDisplay}>{score}</h1>
           <p className={styles.scoreLabel}>Final Score</p>
@@ -197,7 +196,7 @@ export default function Game() {
 
           <PerformanceGraph history={gameHistory} />
 
-          <div className={styles.actions} style={{ marginTop: '2rem' }}>
+          <div className={styles.actions}>
             <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
               <RotateCcw size={20} /> Play Again
             </button>
@@ -211,6 +210,130 @@ export default function Game() {
   }
 
   if (status === 'idle') {
+    const isClassic = theme === 'classic';
+
+    if (isClassic) {
+      const handleClassicToggle = (op: Operation) => {
+        const newOps = currentSettings.operations.includes(op)
+          ? currentSettings.operations.filter(o => o !== op)
+          : [...currentSettings.operations, op];
+        if (newOps.length > 0) updateSettings({ operations: newOps });
+      };
+
+      const handleClassicRange = (opKey: string, field: 'min' | 'max', value: string) => {
+        const num = parseInt(value, 10);
+        if (isNaN(num)) return;
+        updateSettings({
+          ranges: {
+            ...currentSettings.ranges,
+            [opKey]: { ...(currentSettings.ranges as any)[opKey], [field]: num }
+          }
+        });
+      };
+
+      return (
+        <div className={`${styles.container} ${styles.classicHome}`}>
+           <header className={styles.topNav}>
+              <div className={styles.navLeft}>
+                <button className={styles.navLink} onClick={() => navigate('/leaderboard')}>Leaderboard</button>
+              </div>
+              <div className={styles.navRight}>
+                <button className={styles.navLink} onClick={() => setShowSettings(true)}>Options</button>
+                {user ? (
+                   <div className={styles.userMenu}>
+                     <button className={styles.navLink} onClick={() => navigate('/profile')}>{user.user_metadata?.username || 'Profile'}</button>
+                     <button className={styles.navLink} onClick={signOut}>Logout</button>
+                   </div>
+                ) : (
+                   <button className={styles.navLink} onClick={() => setShowAuth(true)}>Login</button>
+                )}
+              </div>
+           </header>
+
+           <div className={styles.classicContainer}>
+              <h1 className={styles.classicTitle}>Arithmetic Game</h1>
+              <p className={styles.classicIntro}>
+                The Arithmetic Game is a fast-paced speed drill where you are given two minutes to solve as many arithmetic problems as you can.
+              </p>
+
+              <div className={styles.classicSettings}>
+                 <div className={styles.classicCheckGroup}>
+                    <div className={styles.classicRow}>
+                      <input 
+                        type="checkbox" 
+                        id="add" 
+                        checked={currentSettings.operations.includes('+')} 
+                        onChange={() => handleClassicToggle('+')} 
+                      />
+                      <label htmlFor="add">Addition</label>
+                    </div>
+                    <div className={styles.classicRangeRow}>
+                       Range: ( <input type="number" value={currentSettings.ranges.add.min} onChange={e => handleClassicRange('add', 'min', e.target.value)} /> to <input type="number" value={currentSettings.ranges.add.max} onChange={e => handleClassicRange('add', 'max', e.target.value)} /> ) + ( <input type="number" value={currentSettings.ranges.add.min} readOnly /> to <input type="number" value={currentSettings.ranges.add.max} readOnly /> )
+                    </div>
+                 </div>
+
+                 <div className={styles.classicCheckGroup}>
+                    <div className={styles.classicRow}>
+                      <input 
+                        type="checkbox" 
+                        id="sub" 
+                        checked={currentSettings.operations.includes('-')} 
+                        onChange={() => handleClassicToggle('-')} 
+                      />
+                      <label htmlFor="sub">Subtraction</label>
+                    </div>
+                    <div className={styles.classicHint}>Addition problems in reverse.</div>
+                 </div>
+
+                 <div className={styles.classicCheckGroup}>
+                    <div className={styles.classicRow}>
+                      <input 
+                        type="checkbox" 
+                        id="mult" 
+                        checked={currentSettings.operations.includes('*')} 
+                        onChange={() => handleClassicToggle('*')} 
+                      />
+                      <label htmlFor="mult">Multiplication</label>
+                    </div>
+                    <div className={styles.classicRangeRow}>
+                       Range: ( <input type="number" value={currentSettings.ranges.mult.min} onChange={e => handleClassicRange('mult', 'min', e.target.value)} /> to <input type="number" value={currentSettings.ranges.mult.max} onChange={e => handleClassicRange('mult', 'max', e.target.value)} /> ) × ( <input type="number" value={currentSettings.ranges.mult.min} readOnly /> to <input type="number" value={currentSettings.ranges.mult.max} readOnly /> )
+                    </div>
+                 </div>
+
+                 <div className={styles.classicCheckGroup}>
+                    <div className={styles.classicRow}>
+                      <input 
+                        type="checkbox" 
+                        id="div" 
+                        checked={currentSettings.operations.includes('/')} 
+                        onChange={() => handleClassicToggle('/')} 
+                      />
+                      <label htmlFor="div">Division</label>
+                    </div>
+                    <div className={styles.classicHint}>Multiplication problems in reverse.</div>
+                 </div>
+
+                 <div className={styles.classicDuration}>
+                    Duration: 
+                    <select value={currentSettings.duration} onChange={e => updateSettings({ duration: parseInt(e.target.value, 10) })}>
+                       <option value={60}>60 seconds</option>
+                       <option value={120}>120 seconds</option>
+                       <option value={300}>300 seconds</option>
+                    </select>
+                 </div>
+
+                 <div className={styles.classicStartWrapper}>
+                    <button className={styles.classicStartBtn} onClick={() => startGame(currentSettings.duration, currentSettings)}>Start</button>
+                 </div>
+              </div>
+           </div>
+
+           {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+           {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+        </div>
+      );
+    }
+
     return (
       <div className={styles.container}>
          <header className={styles.topNav}>
@@ -222,9 +345,6 @@ export default function Game() {
             <div className={styles.navRight}>
               <button className={styles.navLink} onClick={() => setShowSettings(true)}>
                 <Sliders size={18} /> Options
-              </button>
-              <button className={styles.iconBtn} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle Theme">
-                <Settings size={18} />
               </button>
               {user ? (
                  <div className={styles.userMenu}>
@@ -272,46 +392,55 @@ export default function Game() {
   }
 
   // Playing state
+  const isClassic = theme === 'classic';
+
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${isClassic ? styles.classicMode : ''}`}>
        <div className={styles.header}>
           <div className={styles.stat}>
-            <span className={styles.label}>Time</span>
-            <span className={styles.value}>{timeLeft}s</span>
+            <span className={styles.label}>{isClassic ? 'Seconds left:' : 'Time'}</span>
+            <span className={styles.value}>{timeLeft}{!isClassic && 's'}</span>
           </div>
           <div className={styles.stat}>
-            <span className={styles.label}>Score</span>
+            <span className={styles.label}>{isClassic ? 'Score:' : 'Score'}</span>
             <span className={styles.value}>{score}</span>
           </div>
-          <button className={styles.iconBtn} onClick={endGame} title="End Run Prematurely" style={{ marginLeft: 'auto' }}>
-            <RotateCcw size={20} />
-          </button>
+          {!isClassic && (
+            <button className={styles.iconBtn} onClick={endGame} title="End Run Prematurely" style={{ marginLeft: 'auto' }}>
+              <RotateCcw size={20} />
+            </button>
+          )}
        </div>
 
-       <div className={styles.questionContainer}>
-          {currentQuestion && (
-             <div className={styles.problem}>
-                <span className={styles.num}>{currentQuestion.num1}</span>
-                <span className={styles.op}>{currentQuestion.operation}</span>
-                <span className={styles.num}>{currentQuestion.num2}</span>
-             </div>
-          )}
-          
-          <input
-            ref={inputRef}
-            type="text"
-            className={styles.input}
-            value={input}
-            onChange={handleChange}
-            spellCheck={false}
-            autoComplete="off"
-            autoFocus
-          />
+       <div className={styles.questionStrip}>
+         <div className={styles.questionContainer}>
+            {currentQuestion && (
+               <div className={styles.problem}>
+                  <span className={styles.num}>{currentQuestion.num1}</span>
+                  <span className={styles.op}>{currentQuestion.operation === '*' ? '×' : currentQuestion.operation === '/' ? '÷' : currentQuestion.operation}</span>
+                  <span className={styles.num}>{currentQuestion.num2}</span>
+                  {isClassic && <span className={styles.op}>=</span>}
+               </div>
+            )}
+            
+            <input
+              ref={inputRef}
+              type="text"
+              className={styles.input}
+              value={input}
+              onChange={handleChange}
+              spellCheck={false}
+              autoComplete="off"
+              autoFocus
+            />
+         </div>
        </div>
        
-       <div className={styles.footer}>
-          <p>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</p>
-       </div>
+       {!isClassic && (
+         <div className={styles.footer}>
+            <p>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</p>
+         </div>
+       )}
     </div>
   );
 }

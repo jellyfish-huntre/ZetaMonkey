@@ -17,6 +17,7 @@ export interface GameSettings {
     mult: { min: number; max: number };
     div: { min: number; max: number };
   };
+  duration: number;
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
@@ -26,7 +27,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
     sub: { min: 2, max: 100 },
     mult: { min: 2, max: 12 },
     div: { min: 2, max: 12 }
-  }
+  },
+  duration: 120
 };
 
 export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS): Question => {

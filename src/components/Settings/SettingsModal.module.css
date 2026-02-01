@@ -106,6 +106,46 @@
   box-shadow: none;
 }
 
+.themesGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.themeBtn {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border);
+  padding: 0.625rem;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.themeBtn:hover {
+  border-color: var(--text-primary);
+}
+
+.themeBtn.active {
+  background-color: var(--bg-secondary);
+  border-color: var(--accent);
+}
+
+.themePreview {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.themeLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
 .rangesGrid {
   display: flex;
   flex-direction: column;

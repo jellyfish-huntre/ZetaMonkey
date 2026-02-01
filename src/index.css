@@ -1,19 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@300;400;500;600;700;800&family=Roboto+Mono:wght@400;500;700&display=swap');
+
 :root {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --accent: #e5e7eb;
+  --font-sans: 'Lexend Deca', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Roboto Mono', 'JetBrains Mono', monospace;
+}
+
+/* Default Theme: Carbon */
+[data-theme='carbon'], :root:not([data-theme]) {
+  --bg-primary: #323437;
+  --bg-secondary: #2c2e31;
+  --text-primary: #d1d0c5;
+  --text-secondary: #646669;
+  --border: #646669;
+  --input-bg: #2c2e31;
+  --accent: #e2b714;
+  --accent-foreground: #323437;
+  --font-sans: 'Lexend Deca', sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
+}
+
+/* Classic ZetaMac Theme */
+[data-theme='classic'] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #dddddd;
+  --text-primary: #000000;
+  --text-secondary: #444444;
+  --border: #0000ff;
+  --input-bg: #ffffff;
+  --accent: #eeeeee;
   --accent-foreground: #000000;
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: Arial, Helvetica, sans-serif;
 }
 
-[data-theme='dark'], :root:not([data-theme='light']) {
-  --bg-primary: #09090b;
-  --bg-secondary: #18181b;
-  --text-primary: #f4f4f5;
-  --text-secondary: #a1a1aa;
-  --border: #27272a;
-  --input-bg: #18181b;
+/* Nord Theme */
+[data-theme='nord'] {
+  --bg-primary: #2e3440;
+  --bg-secondary: #3b4252;
+  --text-primary: #d8dee9;
+  --text-secondary: #4c566a;
+  --border: #434c5e;
+  --input-bg: #3b4252;
+  --accent: #88c0d0;
+  --accent-foreground: #2e3440;
+  --font-sans: 'Lexend Deca', sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
 }
 
+/* Light Theme */
 [data-theme='light'] {
   --bg-primary: #ffffff;
   --bg-secondary: #f4f4f5;
@@ -21,8 +55,10 @@
   --text-secondary: #71717a;
   --border: #e4e4e7;
   --input-bg: #f4f4f5;
-  --accent: #18181b;
+  --accent: #e2b714;
   --accent-foreground: #ffffff;
+  --font-sans: 'Lexend Deca', sans-serif;
+  --font-mono: 'Roboto Mono', monospace;
 }
 
 body {
