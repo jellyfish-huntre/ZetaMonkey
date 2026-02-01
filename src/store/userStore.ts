@@ -10,6 +10,7 @@ interface UserState {
   theme: 'dark' | 'light' | 'midnight';
   user: User | null;
   session: Session | null;
+  localQualifyingGames: Array<{ score: number; qpm: number; accuracy: number; timestamp: number }>;
   
   // Actions
   updateHighScore: (score: number) => Promise<void>;
@@ -26,9 +27,10 @@ interface UserState {
   recordGame: (score: number, qpm: number, accuracy: number) => Promise<void>;
   fetchHistory: () => Promise<any[]>;
 
-  // Leaderboard Actions
   fetchLeaderboard: (type?: 'all-time' | 'daily') => Promise<any[]>;
   submitLeaderboardScore: (score: number, qpm: number, accuracy: number) => Promise<void>;
+  addLocalQualifyingGame: (score: number, qpm: number, accuracy: number) => void;
+  syncGuestData: (userId: string) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>()(
@@ -40,6 +42,7 @@ export const useUserStore = create<UserState>()(
       theme: 'dark',
       user: null,
       session: null,
+      localQualifyingGames: [],
 
       updateHighScore: async (score) => {
         const { highScore, user } = get();
@@ -143,6 +146,9 @@ export const useUserStore = create<UserState>()(
                    .update({ high_score: localHighScore })
                    .eq('id', data.user.id);
                }
+               
+               // Sync data from guest session
+               await get().syncGuestData(data.user.id);
             }
          }
       },
@@ -167,8 +173,12 @@ export const useUserStore = create<UserState>()(
                username,
                high_score: localHighScore,
                theme: localTheme,
-               total_games: 0
+               total_games: get().totalGames,
+               total_questions: get().totalQuestionsAnswered
              }, { onConflict: 'id' });
+             
+             // Sync data from guest session
+             await get().syncGuestData(data.user.id);
          } else if (data.user && !data.session) {
              throw new Error("Please check your email to confirm your account.");
          }
@@ -197,16 +207,23 @@ export const useUserStore = create<UserState>()(
                  theme: profile.theme || 'dark'
                });
                document.documentElement.setAttribute('data-theme', profile.theme || 'dark');
+               
+               // Sync data from guest session if remnant exists
+               await get().syncGuestData(data.session.user.id);
             } else if (error && error.code === 'PGRST116') {
                // Handle missing profile on session check (existing users before trigger)
                const newProfile = {
                  id: data.session.user.id,
                  username: data.session.user.user_metadata?.username || data.session.user.email?.split('@')[0],
                  theme: 'dark',
-                 total_games: 0,
-                 high_score: 0
+                 total_games: get().totalGames,
+                 high_score: get().highScore,
+                 total_questions: get().totalQuestionsAnswered
                };
                await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
+               
+               // Sync data from guest session
+               await get().syncGuestData(data.session.user.id);
             }
          }
       },
@@ -249,18 +266,9 @@ export const useUserStore = create<UserState>()(
       },
 
       fetchLeaderboard: async (type: 'all-time' | 'daily' = 'all-time') => {
-        let query = supabase
-          .from('leaderboard')
-          .select('*');
-          
-        if (type === 'daily') {
-          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-          query = query.gte('created_at', oneDayAgo);
-        }
-          
-        const { data, error } = await query
-          .order('score', { ascending: false })
-          .limit(100);
+        const { data, error } = await supabase.rpc('get_unique_leaderboard', {
+          time_filter: type === 'daily' ? '24 hours' : null
+        });
           
         if (error) {
           console.error('Error fetching leaderboard:', error);
@@ -284,13 +292,65 @@ export const useUserStore = create<UserState>()(
         if (error) {
           console.error('Error submitting leaderboard score:', error);
         }
+      },
+      addLocalQualifyingGame: (score, qpm, accuracy) => {
+        const { localQualifyingGames } = get();
+        set({
+          localQualifyingGames: [
+            ...localQualifyingGames,
+            { score, qpm, accuracy, timestamp: Date.now() }
+          ]
+        });
+      },
+
+      syncGuestData: async (userId: string) => {
+        const { localQualifyingGames, totalGames, totalQuestionsAnswered } = get();
+        
+        // 1. Sync stats (add local guest totals to cloud)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('total_games, total_questions')
+          .eq('id', userId)
+          .single();
+
+        if (profile) {
+          const newTotalGames = (profile.total_games || 0) + totalGames;
+          const newTotalQuestions = (profile.total_questions || 0) + totalQuestionsAnswered;
+          
+          await supabase
+            .from('profiles')
+            .update({ 
+               total_games: newTotalGames,
+               total_questions: newTotalQuestions
+            })
+            .eq('id', userId);
+            
+          set({ 
+            totalGames: newTotalGames,
+            totalQuestionsAnswered: newTotalQuestions
+          });
+        }
+
+        // 2. Sync leaderboard scores
+        if (localQualifyingGames.length > 0) {
+          for (const game of localQualifyingGames) {
+            await get().submitLeaderboardScore(game.score, game.qpm, game.accuracy);
+            // Also record in history
+            await get().recordGame(game.score, game.qpm, game.accuracy);
+          }
+          // Clear sync list
+          set({ localQualifyingGames: [] });
+        }
       }
     }),
     {
       name: 'zetamonkey-storage',
       partialize: (state) => ({ 
         highScore: state.highScore, 
+        totalGames: state.totalGames,
+        totalQuestionsAnswered: state.totalQuestionsAnswered,
         theme: state.theme,
+        localQualifyingGames: state.localQualifyingGames
       }), 
     }
   )

@@ -4,6 +4,7 @@ create table profiles (
   username text unique,
   high_score int default 0,
   total_games int default 0,
+  total_questions int default 0,
   theme text default 'dark',
   updated_at timestamp with time zone default timezone('utc'::text, now())
 );

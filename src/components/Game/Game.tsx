@@ -70,15 +70,19 @@ export default function Game() {
       const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
       const qpm = Math.round(correctCount / (duration / 60));
 
-      // Save game to history if logged in
+      const isEligible = isDefaultSettings(settings) && skipsCount === 0;
+      
       if (user) {
         recordGame(score, qpm, accuracy);
 
         // Submit to leaderboard if qualifying
-        const isEligible = isDefaultSettings(settings) && skipsCount === 0;
         if (isEligible && score > 0) {
           submitLeaderboardScore(score, qpm, accuracy);
         }
+      } else if (isEligible && score > 0) {
+        // Track locally for guests to sync later
+        const { addLocalQualifyingGame } = useUserStore.getState();
+        addLocalQualifyingGame(score, qpm, accuracy);
       }
     }
   }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore]);
