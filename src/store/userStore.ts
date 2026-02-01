@@ -25,6 +25,10 @@ interface UserState {
   // History Actions
   recordGame: (score: number, qpm: number, accuracy: number) => Promise<void>;
   fetchHistory: () => Promise<any[]>;
+
+  // Leaderboard Actions
+  fetchLeaderboard: (type?: 'all-time' | 'daily') => Promise<any[]>;
+  submitLeaderboardScore: (score: number, qpm: number, accuracy: number) => Promise<void>;
 }
 
 export const useUserStore = create<UserState>()(
@@ -242,6 +246,44 @@ export const useUserStore = create<UserState>()(
           return [];
         }
         return data || [];
+      },
+
+      fetchLeaderboard: async (type: 'all-time' | 'daily' = 'all-time') => {
+        let query = supabase
+          .from('leaderboard')
+          .select('*');
+          
+        if (type === 'daily') {
+          const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          query = query.gte('created_at', oneDayAgo);
+        }
+          
+        const { data, error } = await query
+          .order('score', { ascending: false })
+          .limit(100);
+          
+        if (error) {
+          console.error('Error fetching leaderboard:', error);
+          return [];
+        }
+        return data || [];
+      },
+
+      submitLeaderboardScore: async (score, qpm, accuracy) => {
+        const { user } = get();
+        if (!user) return;
+
+        const { error } = await supabase.from('leaderboard').insert({
+          user_id: user.id,
+          username: user.user_metadata.username || user.email?.split('@')[0],
+          score,
+          qpm,
+          accuracy
+        });
+
+        if (error) {
+          console.error('Error submitting leaderboard score:', error);
+        }
       }
     }),
     {

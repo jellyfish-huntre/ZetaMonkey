@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { generateQuestion, checkAnswer, type Question } from '../lib/mathEngine';
+import { generateQuestion, checkAnswer, type Question, type GameSettings, DEFAULT_SETTINGS } from '../lib/mathEngine';
 
 interface GameState {
   status: 'idle' | 'playing' | 'finished';
   score: number;
   timeLeft: number;
-  duration: number; // usually 120s
+  duration: number;
   currentQuestion: Question | null;
   gameHistory: Array<{
     question: Question;
@@ -14,9 +14,11 @@ interface GameState {
     isCorrect: boolean;
     timestamp: number;
   }>;
+  skipsCount: number;
+  settings: GameSettings;
   
   // Actions
-  startGame: (duration?: number) => void;
+  startGame: (duration?: number, settings?: GameSettings) => void;
   submitAnswer: (answer: string) => void;
   resetGame: () => void;
   tick: () => void;
@@ -31,20 +33,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   duration: 120,
   currentQuestion: null,
   gameHistory: [],
+  skipsCount: 0,
+  settings: DEFAULT_SETTINGS,
 
-  startGame: (duration = 120) => {
+  startGame: (duration = 120, settings = DEFAULT_SETTINGS) => {
     set({
       status: 'playing',
       score: 0,
       timeLeft: duration,
       duration: duration,
-      currentQuestion: generateQuestion(),
+      currentQuestion: generateQuestion(settings),
       gameHistory: [],
+      skipsCount: 0,
+      settings: settings,
     });
   },
 
   submitAnswer: (answer: string) => {
-    const { currentQuestion, score, gameHistory } = get();
+    const { currentQuestion, score, gameHistory, settings } = get();
     if (!currentQuestion) return;
 
     const isCorrect = checkAnswer(currentQuestion, answer);
@@ -62,19 +68,18 @@ export const useGameStore = create<GameState>((set, get) => ({
           timestamp: Date.now(),
         },
       ],
-      currentQuestion: generateQuestion(),
+      currentQuestion: generateQuestion(settings),
     });
   },
 
   skipQuestion: () => {
-    const { currentQuestion, gameHistory } = get();
+    const { currentQuestion, gameHistory, skipsCount, settings } = get();
     if (!currentQuestion) return;
     
-    // Treat skip as incorrect or just skipped? usually just no points, but tracked.
-    // We'll mark as incorrect for now or add a 'skipped' status later.
     const timeTaken = Date.now() - currentQuestion.startTime;
     
     set({
+      skipsCount: skipsCount + 1,
       gameHistory: [
         ...gameHistory,
         {
@@ -85,7 +90,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           timestamp: Date.now(),
         }
       ],
-      currentQuestion: generateQuestion(),
+      currentQuestion: generateQuestion(settings),
     });
   },
 
@@ -96,6 +101,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       timeLeft: 120,
       currentQuestion: null,
       gameHistory: [],
+      skipsCount: 0,
     });
   },
 

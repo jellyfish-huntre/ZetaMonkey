@@ -1,62 +1,146 @@
 .container {
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.topNav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2.5rem;
   width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+}
+
+.navLeft, .navRight {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.navLink {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  color: var(--text-primary);
+  transform: translateY(-1px);
 }
 
 .hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  animation: fadeIn 0.5s ease-out;
+  max-width: 600px;
+  width: 100%;
+  padding: 2rem;
+  animation: fadeIn 0.8s ease-out;
+}
+
+.logo {
+  font-size: 4rem;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  font-family: serif;
 }
 
 .title {
-  font-size: 4rem;
+  font-size: 3.5rem;
   font-weight: 800;
-  margin-bottom: 0.5rem;
-  letter-spacing: -0.05em;
-  background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
+  margin: 0;
+  letter-spacing: -0.02em;
 }
 
 .subtitle {
   font-size: 1.25rem;
   color: var(--text-secondary);
-  margin-bottom: 2rem;
+  margin: 1rem 0 3rem 0;
+}
+
+.statsRow {
+  display: flex;
+  gap: 3rem;
+  margin-bottom: 3rem;
+}
+
+.mainStat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+.statNum {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .btnPrimary {
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  border: none;
-  padding: 0.75rem 2rem;
-  font-size: 1.25rem;
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+  padding: 1rem 2.5rem;
+  border-radius: 12px;
+  font-size: 1.1rem;
   font-weight: 600;
-  border-radius: 8px;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  transition: transform 0.1s, opacity 0.2s;
+  gap: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .btnPrimary:hover {
-  opacity: 0.9;
   transform: translateY(-1px);
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
 }
 
 .btnSecondary {
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  padding: 0.75rem 2rem;
-  font-size: 1.25rem;
-  font-weight: 500;
-  border-radius: 8px;
-  margin-left: 1rem;
+  color: var(--text-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSecondary:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-secondary);
 }
 
 .header {
@@ -128,12 +212,69 @@
   font-size: 0.875rem;
 }
 
-.summary {
+.gameOverBadge {
+  background-color: var(--bg-secondary);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: 50px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--border);
+}
+
+.scoreDisplay {
+  font-size: 6rem;
+  margin: 0;
+  line-height: 1;
+}
+
+.scoreLabel {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.8rem;
+  margin-bottom: 2.5rem;
+}
+
+.finalStats {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 3rem;
+  width: 100%;
+}
+
+.statBox {
+  flex: 1;
+  background-color: var(--bg-secondary);
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 0.25rem;
+}
+
+.qualifyingBadge {
+  background-color: var(--text-primary);
+  color: var(--bg-primary);
+  padding: 0.75rem 1.5rem;
+  border-radius: 12px;
+  font-weight: 700;
+  display: flex;
   align-items: center;
-  text-align: center;
+  gap: 0.5rem;
+  margin-top: -1.5rem;
+  margin-bottom: 2.5rem;
+  box-shadow: none;
+  animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
 
 @keyframes fadeIn {

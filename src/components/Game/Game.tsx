@@ -1,11 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
-import { Play, RotateCcw, Settings, LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { useSettingsStore } from '../../store/settingsStore';
+import { isDefaultSettings } from '../../lib/mathEngine';
+import { Play, RotateCcw, Settings, LogIn, LogOut, User as UserIcon, Trophy, Sliders } from 'lucide-react';
 import styles from './Game.module.css';
-import PerformanceGraph from '../Charts/PerformanceGraph'; // Import graph
+import PerformanceGraph from '../Charts/PerformanceGraph'; 
 import AuthModal from '../Auth/AuthModal';
+import SettingsModal from '../Settings/SettingsModal';
 
 export default function Game() {
   const { 
@@ -20,14 +23,30 @@ export default function Game() {
     resetGame, 
     tick,
     skipQuestion,
-    endGame
+    endGame,
+    skipsCount,
+    settings
   } = useGameStore();
 
-  const { highScore, updateHighScore, incrementGamesTerm, theme, setTheme, user, signOut, checkSession, recordGame } = useUserStore();
+  const { 
+    highScore, 
+    totalGames,
+    updateHighScore, 
+    incrementGamesTerm, 
+    theme, 
+    setTheme, 
+    user, 
+    signOut, 
+    checkSession, 
+    recordGame, 
+    submitLeaderboardScore 
+  } = useUserStore();
+  const { settings: currentSettings } = useSettingsStore();
   const navigate = useNavigate();
 
   const [input, setInput] = useState('');
   const [showAuth, setShowAuth] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Check auth session
@@ -46,17 +65,23 @@ export default function Game() {
       updateHighScore(score);
       incrementGamesTerm(score);
       
+      const totalQuestions = gameHistory.length;
+      const correctCount = gameHistory.filter(h => h.isCorrect).length;
+      const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+      const qpm = Math.round(correctCount / (duration / 60));
+
       // Save game to history if logged in
       if (user) {
-        const totalQuestions = gameHistory.length;
-        const correctCount = gameHistory.filter(h => h.isCorrect).length;
-        const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-        const qpm = Math.round(correctCount / (duration / 60));
-        
         recordGame(score, qpm, accuracy);
+
+        // Submit to leaderboard if qualifying
+        const isEligible = isDefaultSettings(settings) && skipsCount === 0;
+        if (isEligible && score > 0) {
+          submitLeaderboardScore(score, qpm, accuracy);
+        }
       }
     }
-  }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame]);
+  }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore]);
 
   // Timer effect
   useEffect(() => {
@@ -95,13 +120,24 @@ export default function Game() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && status !== 'playing' && document.activeElement?.tagName !== 'INPUT') {
+      // Don't trigger shortcuts if user is typing in settings/auth inputs
+      if (document.activeElement?.tagName === 'INPUT') {
+        if (e.key === 'Escape' && status === 'playing') {
+          // Allow ESC in game
+        } else if (e.key === 'Enter' && status === 'playing') {
+          // Allow Enter in game
+        } else {
+          return;
+        }
+      }
+
+      if (e.code === 'Space' && status !== 'playing') {
         e.preventDefault();
-        startGame();
+        startGame(120, currentSettings);
       } else if (e.code === 'Space' && status === 'playing' ) {
          e.preventDefault();
          resetGame();
-         startGame();
+         startGame(120, currentSettings);
       } else if (e.key === 'Escape') {
          if (e.shiftKey && status === 'playing') {
            endGame();
@@ -118,44 +154,51 @@ export default function Game() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, startGame, resetGame, skipQuestion, endGame]);
+  }, [status, startGame, resetGame, skipQuestion, endGame, currentSettings]);
 
   if (status === 'finished') {
     const totalQuestions = gameHistory.length;
     const correctCount = gameHistory.filter(h => h.isCorrect).length;
     const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-    const speed = Math.round(correctCount / (duration / 60)); // QPM based on total duration (usually 2 mins)
-    
-    // Note: duration is in seconds, so correct / (sec/60) = correct / min
+    const qpm = Math.round(correctCount / (duration / 60));
+    const isQualifying = isDefaultSettings(settings) && skipsCount === 0;
 
     return (
       <div className={styles.container}>
         <div className={styles.summary} style={{ width: '100%', maxWidth: '800px' }}>
-          <h1 className={styles.title}>Session Complete</h1>
+          <div className={styles.gameOverBadge}>Run Complete</div>
+          <h1 className={styles.scoreDisplay}>{score}</h1>
+          <p className={styles.scoreLabel}>Final Score</p>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem', width: '100%', marginBottom: '2rem' }}>
-             <div className={styles.statBox}>
-               <span className={styles.label}>Score</span>
-               <span className={styles.value}>{score}</span>
-             </div>
+          <div className={styles.finalStats}>
              <div className={styles.statBox}>
                <span className={styles.label}>Accuracy</span>
                <span className={styles.value}>{accuracy}%</span>
              </div>
-              <div className={styles.statBox}>
+             <div className={styles.statBox}>
                <span className={styles.label}>Speed</span>
-               <span className={styles.value}>{speed} <span style={{fontSize: '1rem'}}>QPM</span></span>
+               <span className={styles.value}>{qpm} <span style={{fontSize: '1rem'}}>QPM</span></span>
+             </div>
+             <div className={styles.statBox}>
+               <span className={styles.label}>Skips</span>
+               <span className={styles.value}>{skipsCount}</span>
              </div>
           </div>
+
+          {isQualifying && score > 0 && (
+            <div className={styles.qualifyingBadge}>
+              <Trophy size={16} /> Qualified for Global Leaderboard
+            </div>
+          )}
 
           <PerformanceGraph history={gameHistory} />
 
           <div className={styles.actions} style={{ marginTop: '2rem' }}>
-            <button className={styles.btnPrimary} onClick={() => startGame()}>
+            <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
               <RotateCcw size={20} /> Play Again
             </button>
             <button className={styles.btnSecondary} onClick={resetGame}>
-               Menu
+               Back to Menu
             </button>
           </div>
         </div>
@@ -166,44 +209,60 @@ export default function Game() {
   if (status === 'idle') {
     return (
       <div className={styles.container}>
-         <div className={styles.topRight}>
-            <button className={styles.iconBtn} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle Theme">
-              <Settings size={20} />
-            </button>
-            {user ? (
-               <div className={styles.userMenu}>
-                 <button className={styles.iconBtn} onClick={() => navigate('/profile')} title="View Profile">
-                   <UserIcon size={20} />
+         <header className={styles.topNav}>
+            <div className={styles.navLeft}>
+              <button className={styles.navLink} onClick={() => navigate('/leaderboard')}>
+                <Trophy size={18} /> Leaderboard
+              </button>
+            </div>
+            <div className={styles.navRight}>
+              <button className={styles.navLink} onClick={() => setShowSettings(true)}>
+                <Sliders size={18} /> Options
+              </button>
+              <button className={styles.iconBtn} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title="Toggle Theme">
+                <Settings size={18} />
+              </button>
+              {user ? (
+                 <div className={styles.userMenu}>
+                   <button className={styles.iconBtn} onClick={() => navigate('/profile')} title="View Profile">
+                     <UserIcon size={18} />
+                   </button>
+                   <button className={styles.iconBtn} onClick={signOut} title="Sign Out">
+                     <LogOut size={18} />
+                   </button>
+                 </div>
+              ) : (
+                 <button className={styles.navLink} onClick={() => setShowAuth(true)}>
+                   <LogIn size={18} /> Login
                  </button>
-                 <span className={styles.username}>{(user.user_metadata as any).username || 'User'}</span>
-                 <button className={styles.iconBtn} onClick={signOut} title="Sign Out">
-                   <LogOut size={20} />
-                 </button>
-               </div>
-            ) : (
-               <button className={styles.iconBtn} onClick={() => setShowAuth(true)} title="Login">
-                 <LogIn size={20} />
-               </button>
-            )}
-         </div>
+              )}
+            </div>
+         </header>
+
          <div className={styles.hero}>
+            <div className={styles.logo}>ζ</div>
             <h1 className={styles.title}>ZetaMonkey</h1>
-            <p className={styles.subtitle}>Arithmetic Training for the Modern Mind</p>
             
-            <div style={{ display: 'flex', gap: '2rem', justifyContent: 'center', marginBottom: '2rem' }}>
-               <div className={styles.statBox}>
-                  <span className={styles.label} style={{ fontSize: '0.75rem' }}>High Score</span>
-                  <span className={styles.value} style={{ fontSize: '1.5rem' }}>{highScore}</span>
+            <div className={styles.statsRow}>
+               <div className={styles.mainStat}>
+                  <span className={styles.statLabel}>Personal Best</span>
+                  <span className={styles.statNum}>{highScore}</span>
+               </div>
+               <div className={styles.mainStat}>
+                  <span className={styles.statLabel}>Total Games</span>
+                  <span className={styles.statNum}>{totalGames}</span>
                </div>
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-               <button className={styles.btnPrimary} onClick={() => startGame()}>
-                 <Play size={20} /> Start Game
+               <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
+                 <Play size={24} /> Start Training (Space)
                </button>
             </div>
          </div>
+
          {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+         {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       </div>
     );
   }
@@ -240,6 +299,8 @@ export default function Game() {
             className={styles.input}
             value={input}
             onChange={handleChange}
+            spellCheck={false}
+            autoComplete="off"
             autoFocus
           />
        </div>

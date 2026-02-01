@@ -1,8 +1,8 @@
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --accent: #3b82f6;
-  --accent-foreground: #ffffff;
+  --accent: #e5e7eb;
+  --accent-foreground: #000000;
 }
 
 [data-theme='dark'], :root:not([data-theme='light']) {
@@ -21,6 +21,8 @@
   --text-secondary: #71717a;
   --border: #e4e4e7;
   --input-bg: #f4f4f5;
+  --accent: #18181b;
+  --accent-foreground: #ffffff;
 }
 
 body {
