@@ -146,17 +146,25 @@
 .header {
   position: absolute;
   top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   width: 100%;
   max-width: 800px;
   padding: 0 2rem;
 }
 
+.gameStats {
+  display: flex;
+  gap: 1.5rem;
+}
+
 .stat {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .label {
@@ -295,7 +303,7 @@
 
 .iconBtn {
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid transparent;
   color: var(--text-secondary);
   padding: 0.625rem;
   border-radius: 8px;
@@ -308,7 +316,7 @@
 
 .iconBtn:hover {
   background: var(--bg-secondary);
-  border-color: var(--text-secondary);
+  border-color: var(--border);
   color: var(--text-primary);
 }
 
@@ -490,6 +498,7 @@
   padding: 0 1rem;
   left: 0;
   right: 0;
+  transform: none;
   display: flex;
   justify-content: space-between;
 }

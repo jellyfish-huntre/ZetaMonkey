@@ -416,21 +416,23 @@ export default function Game() {
 
   return (
     <div className={`${styles.container} ${isClassic ? styles.classicMode : ''}`}>
-       <div className={styles.header}>
-          <div className={styles.stat}>
-            <span className={styles.label}>{isClassic ? 'Seconds left:' : 'Time'}</span>
-            <span className={styles.value}>{timeLeft}{!isClassic && 's'}</span>
-          </div>
-          <div className={styles.stat}>
-            <span className={styles.label}>{isClassic ? 'Score:' : 'Score'}</span>
-            <span className={styles.value}>{score}</span>
-          </div>
-          {!isClassic && (
-            <button className={styles.iconBtn} onClick={endGame} title="End Run Prematurely" style={{ marginLeft: 'auto' }}>
-              <RotateCcw size={20} />
-            </button>
-          )}
-       </div>
+        <div className={styles.header}>
+           <div className={styles.gameStats}>
+             <div className={styles.stat}>
+               <span className={styles.label}>{isClassic ? 'Seconds left:' : 'Time'}</span>
+               <span className={styles.value}>{timeLeft}{!isClassic && 's'}</span>
+             </div>
+             <div className={styles.stat}>
+               <span className={styles.label}>{isClassic ? 'Score:' : 'Score'}</span>
+               <span className={styles.value}>{score}</span>
+             </div>
+           </div>
+           {!isClassic && (
+             <button className={styles.iconBtn} onClick={endGame} title="End Run Prematurely" style={{ marginLeft: 'auto' }}>
+               <RotateCcw size={20} />
+             </button>
+           )}
+        </div>
 
        <div className={styles.questionStrip}>
          <div className={styles.questionContainer}>
