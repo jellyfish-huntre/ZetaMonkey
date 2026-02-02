@@ -1,0 +1,75 @@
+.graphWrapper {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.graphWrapper :global(.recharts-wrapper),
+.graphWrapper :global(.recharts-surface) {
+  outline: none !important;
+}
+
+.title {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+}
+
+.detailsBox {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.equation {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.equationText {
+  font-size: 1.2rem;
+  font-weight: bold;
+  font-family: var(--font-mono);
+}
+
+.answerSection {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.answerLabel {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.userAnswer {
+  font-weight: bold;
+  font-family: var(--font-mono);
+  font-size: 1.1rem;
+}
+
+.timeLabel {
+  margin-left: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.chartContainer {
+  width: 100%;
+  height: 220px;
+  position: relative;
+}

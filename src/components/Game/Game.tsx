@@ -25,7 +25,8 @@ export default function Game() {
     skipQuestion,
     endGame,
     skipsCount,
-    settings
+    settings,
+    finishReason
   } = useGameStore();
 
   const { 
@@ -60,7 +61,7 @@ export default function Game() {
 
   // Update stats on finish
   useEffect(() => {
-    if (status === 'finished') {
+    if (status === 'finished' && finishReason === 'time_up') {
       updateHighScore(score);
       incrementGamesTerm(score);
       
@@ -84,7 +85,7 @@ export default function Game() {
         addLocalQualifyingGame(score, qpm, accuracy);
       }
     }
-  }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore]);
+  }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore, finishReason]);
 
   // Timer effect
   useEffect(() => {
@@ -123,25 +124,29 @@ export default function Game() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts if user is typing in settings/auth inputs
-      if (document.activeElement?.tagName === 'INPUT') {
-        if (e.key === 'Escape' && status === 'playing') {
-          // Allow ESC in game
-        } else if (e.key === 'Enter' && status === 'playing') {
-          // Allow Enter in game
-        } else {
-          return;
-        }
+      // Allow Space to restart game ANYTIME
+      if (e.code === 'Space') {
+         // Prevent default scrolling
+         e.preventDefault();
+         
+         // If we are in settings or auth, maybe we shouldn't restart?
+         // But user asked for "Pressing space while the game is ongoing doesn't restart the run"
+         // Assuming if input is not one of *our* controls (like settings input)
+         // The main game input is always focused. 
+         
+         // Check if a modal is open
+         if (showAuth || showSettings) return;
+
+         startGame(120, currentSettings);
+         return;
       }
 
-      if (e.code === 'Space' && status !== 'playing') {
-        e.preventDefault();
-        startGame(120, currentSettings);
-      } else if (e.code === 'Space' && status === 'playing' ) {
-         e.preventDefault();
-         resetGame();
-         startGame(120, currentSettings);
-      } else if (e.key === 'Escape') {
+      // Don't trigger shortcuts if user is typing in settings/auth inputs
+      if (document.activeElement?.tagName === 'INPUT' && document.activeElement !== inputRef.current) {
+         return;
+      }
+
+      if (e.key === 'Escape') {
          if (e.shiftKey && status === 'playing') {
            endGame();
          } else {
@@ -157,7 +162,7 @@ export default function Game() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, startGame, resetGame, skipQuestion, endGame, currentSettings]);
+  }, [status, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings]);
 
   if (status === 'finished') {
     const totalQuestions = gameHistory.length;
@@ -380,7 +385,7 @@ export default function Game() {
 
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
-                 <Play size={24} /> Start Training (Space)
+                 <Play size={24} /> Press Space
                </button>
             </div>
          </div>

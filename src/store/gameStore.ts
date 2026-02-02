@@ -17,6 +17,8 @@ interface GameState {
   skipsCount: number;
   settings: GameSettings;
   
+  finishReason: 'time_up' | 'aborted' | null;
+  
   // Actions
   startGame: (duration?: number, settings?: GameSettings) => void;
   submitAnswer: (answer: string) => void;
@@ -35,6 +37,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameHistory: [],
   skipsCount: 0,
   settings: DEFAULT_SETTINGS,
+  finishReason: null,
 
   startGame: (duration = 120, settings = DEFAULT_SETTINGS) => {
     set({
@@ -46,6 +49,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       gameHistory: [],
       skipsCount: 0,
       settings: settings,
+      finishReason: null,
     });
   },
 
@@ -102,6 +106,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentQuestion: null,
       gameHistory: [],
       skipsCount: 0,
+      finishReason: null,
     });
   },
 
@@ -110,13 +115,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (status !== 'playing') return;
 
     if (timeLeft <= 1) {
-      set({ status: 'finished', timeLeft: 0 });
+      set({ status: 'finished', timeLeft: 0, finishReason: 'time_up' });
     } else {
       set({ timeLeft: timeLeft - 1 });
     }
   },
 
   endGame: () => {
-    set({ status: 'finished', timeLeft: 0 });
+    set({ status: 'finished', timeLeft: 0, finishReason: 'aborted' });
   },
 }));
