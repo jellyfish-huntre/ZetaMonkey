@@ -10,6 +10,7 @@ interface HistoryItem {
   answerGiven: string;
   isCorrect: boolean;
   timestamp: number;
+  mistakes?: number;
 }
 
 interface PerformanceGraphProps {
@@ -27,6 +28,7 @@ export default function PerformanceGraph({ history }: PerformanceGraphProps) {
     label: `${item.question.num1} ${item.question.operation === '*' ? '×' : item.question.operation === '/' ? '÷' : item.question.operation} ${item.question.num2}`,
     correctAnswer: item.question.answer,
     userAnswer: item.answerGiven,
+    mistakes: item.mistakes || 0,
   }));
 
   const handleChartClick = (chartState: any) => {
@@ -50,6 +52,31 @@ export default function PerformanceGraph({ history }: PerformanceGraphProps) {
     if (point) {
       setSelectedPoint(point);
     }
+  };
+
+  const CustomDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    if (payload.mistakes > 0) {
+      return (
+        <svg x={cx - 5} y={cy - 5} width={10} height={10} fill="#f87171" viewBox="0 0 24 24">
+          <path d="M18 6L6 18M6 6l12 12" stroke="#f87171" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      );
+    }
+    return <circle cx={cx} cy={cy} r={4} fill="#3b82f6" strokeWidth={0} />;
+  };
+
+  const CustomActiveDot = (props: any) => {
+     const { cx, cy, payload } = props;
+     // If mistake, show a larger X or red dot
+     if (payload.mistakes > 0) {
+        return (
+          <svg x={cx - 8} y={cy - 8} width={16} height={16} fill="#f87171" viewBox="0 0 24 24">
+             <path d="M18 6L6 18M6 6l12 12" stroke="#f87171" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        );
+     }
+     return <circle cx={cx} cy={cy} r={6} stroke="#fff" strokeWidth={2} fill="#3b82f6" />;
   };
 
   if (!history || history.length === 0) return null;
@@ -77,6 +104,11 @@ export default function PerformanceGraph({ history }: PerformanceGraphProps) {
             <span className={styles.timeLabel}>
               ({selectedPoint.time}s)
             </span>
+            {selectedPoint.mistakes > 0 && (
+              <span style={{ marginLeft: '0.5rem', color: '#f87171', fontSize: '0.9rem' }}>
+                ({selectedPoint.mistakes} mistake{selectedPoint.mistakes !== 1 ? 's' : ''})
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -120,10 +152,10 @@ export default function PerformanceGraph({ history }: PerformanceGraphProps) {
                dataKey="time" 
                stroke="#3b82f6" 
                strokeWidth={2} 
-               dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }}
-               activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
                animationDuration={500}
                isAnimationActive={false}
+               dot={<CustomDot />}
+               activeDot={<CustomActiveDot />}
              />
           </LineChart>
         </ResponsiveContainer>

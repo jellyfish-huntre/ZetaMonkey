@@ -13,6 +13,7 @@ interface GameState {
     answerGiven: string;
     isCorrect: boolean;
     timestamp: number;
+    mistakes?: number;
   }>;
   skipsCount: number;
   settings: GameSettings;
@@ -21,7 +22,7 @@ interface GameState {
   
   // Actions
   startGame: (duration?: number, settings?: GameSettings) => void;
-  submitAnswer: (answer: string) => void;
+  submitAnswer: (answer: string, mistakes?: number) => void;
   resetGame: () => void;
   tick: () => void;
   skipQuestion: () => void;
@@ -53,7 +54,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
   },
 
-  submitAnswer: (answer: string) => {
+  submitAnswer: (answer: string, mistakes = 0) => {
     const { currentQuestion, score, gameHistory, settings } = get();
     if (!currentQuestion) return;
 
@@ -70,6 +71,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           answerGiven: answer,
           isCorrect,
           timestamp: Date.now(),
+          mistakes,
         },
       ],
       currentQuestion: generateQuestion(settings),

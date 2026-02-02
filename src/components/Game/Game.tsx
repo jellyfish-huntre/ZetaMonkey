@@ -45,6 +45,7 @@ export default function Game() {
   const navigate = useNavigate();
 
   const [input, setInput] = useState('');
+  const [mistakes, setMistakes] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -115,8 +116,9 @@ export default function Game() {
     if (currentQuestion) {
       const numVal = parseInt(val, 10);
       if (!isNaN(numVal) && numVal === currentQuestion.answer) {
-        submitAnswer(val);
+        submitAnswer(val, mistakes);
         setInput('');
+        setMistakes(0);
       }
     }
   };
@@ -141,9 +143,15 @@ export default function Game() {
          return;
       }
 
-      // Don't trigger shortcuts if user is typing in settings/auth inputs
       if (document.activeElement?.tagName === 'INPUT' && document.activeElement !== inputRef.current) {
          return;
+      }
+      
+      if (e.key === 'Backspace' && status === 'playing') {
+        // Check actual input value from ref to avoid stale closure issues
+        if (inputRef.current && inputRef.current.value.length > 0) {
+           setMistakes(m => m + 1);
+        }
       }
 
       if (e.key === 'Escape') {
@@ -156,6 +164,7 @@ export default function Game() {
          if (status === 'playing') {
              skipQuestion();
              setInput('');
+             setMistakes(0);
          }
       }
     };
@@ -165,9 +174,15 @@ export default function Game() {
   }, [status, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings]);
 
   if (status === 'finished') {
-    const totalQuestions = gameHistory.length;
+    // const totalQuestions = gameHistory.length; (unused now)
     const correctCount = gameHistory.filter(h => h.isCorrect).length;
-    const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+    // Calculate accuracy based on mistakes: (Questions / (Questions + Mistakes)) * 100
+    // Or (Keystrokes Correct / Total Keystrokes)?
+    // User wants "backspaces" to lower accuracy.
+    const totalMistakes = gameHistory.reduce((acc, h) => acc + (h.mistakes || 0), 0);
+    const accuracy = correctCount > 0 
+      ? Math.round((correctCount / (correctCount + totalMistakes)) * 100) 
+      : 0;
     const qpm = Math.round(correctCount / (duration / 60));
     const isQualifying = isDefaultSettings(settings) && skipsCount === 0;
 

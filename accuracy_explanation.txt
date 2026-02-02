@@ -1,0 +1,8 @@
+Accuracy Calculation:
+
+Formula: (Correct Answers / Total Questions Attempted) * 100
+
+Notes:
+- "Total Questions Attempted" includes Correct, Incorrect, and Skipped questions.
+- Skipped questions are treated as incorrect (they increase the denominator but not the numerator).
+- The result is rounded to the nearest integer.

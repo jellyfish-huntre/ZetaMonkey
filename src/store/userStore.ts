@@ -11,6 +11,7 @@ interface UserState {
   user: User | null;
   session: Session | null;
   localQualifyingGames: Array<{ score: number; qpm: number; accuracy: number; timestamp: number }>;
+  lastSyncedUserId: string | null;
   
   // Actions
   updateHighScore: (score: number) => Promise<void>;
@@ -43,6 +44,7 @@ export const useUserStore = create<UserState>()(
       user: null,
       session: null,
       localQualifyingGames: [],
+      lastSyncedUserId: null,
 
       updateHighScore: async (score) => {
         const { highScore, user } = get();
@@ -136,7 +138,8 @@ export const useUserStore = create<UserState>()(
                  highScore: finalHighScore,
                  totalGames: profile.total_games || 0,
                  totalQuestionsAnswered: profile.total_questions || 0,
-                 theme: profile.theme || localTheme
+                  theme: profile.theme || localTheme,
+                  lastSyncedUserId: data.user.id
                });
                
                document.documentElement.setAttribute('data-theme', profile.theme || localTheme);
@@ -177,17 +180,17 @@ export const useUserStore = create<UserState>()(
                total_games: localTotalGames,
                total_questions: localTotalQuestions
              }, { onConflict: 'id' });
-             
-             // Sync data from guest session
-             await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
-         } else if (data.user && !data.session) {
+                          // Sync data from guest session
+              await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
+              set({ lastSyncedUserId: data.user.id });
+          } else if (data.user && !data.session) {
              throw new Error("Please check your email to confirm your account.");
          }
       },
 
       signOut: async () => {
          await supabase.auth.signOut();
-         set({ user: null, session: null, highScore: 0, totalGames: 0, totalQuestionsAnswered: 0 });
+         set({ user: null, session: null, highScore: 0, totalGames: 0, totalQuestionsAnswered: 0, lastSyncedUserId: null });
       },
 
       checkSession: async () => {
@@ -199,41 +202,48 @@ export const useUserStore = create<UserState>()(
             const guestTotalQuestions = get().totalQuestionsAnswered;
             const guestHighScore = get().highScore;
             const guestTheme = get().theme;
+            const lastSyncedId = get().lastSyncedUserId;
+            const currentUserId = data.session.user.id;
 
             set({ user: data.session.user, session: data.session });
             
             const { data: profile, error } = await supabase
               .from('profiles')
               .select('*')
-              .eq('id', data.session.user.id)
+              .eq('id', currentUserId)
               .single();
               
             if (profile) {
                // If we were a guest (user was null in store), sync local stats to cloud
-               if (wasGuest) {
-                  await get().syncGuestData(data.session.user.id, guestTotalGames, guestTotalQuestions);
+               // BUT only if we haven't already synced for this user (check lastSyncedUserId)
+               // This prevents double-counting on page reloads
+               if (wasGuest && lastSyncedId !== currentUserId) {
+                  await get().syncGuestData(currentUserId, guestTotalGames, guestTotalQuestions);
                   // After syncing, update the store with the *new* profile data (which now includes synced guest data)
                   const { data: updatedProfile } = await supabase
                     .from('profiles')
                     .select('*')
-                    .eq('id', data.session.user.id)
+                    .eq('id', currentUserId)
                     .single();
                   if (updatedProfile) {
                     set({
                       highScore: Math.max(guestHighScore, updatedProfile.high_score || 0),
                       totalGames: updatedProfile.total_games || 0,
                       totalQuestionsAnswered: updatedProfile.total_questions || 0,
-                      theme: updatedProfile.theme || guestTheme
+                      theme: updatedProfile.theme || guestTheme,
+                      lastSyncedUserId: currentUserId
                     });
                     document.documentElement.setAttribute('data-theme', updatedProfile.theme || guestTheme);
                   }
                } else {
-                  // User was already logged in, just refresh store from cloud
+                  // User was already logged in OR just reloaded page
+                  // Just refresh store from cloud to be safe
                   set({
                     highScore: profile.high_score || 0,
                     totalGames: profile.total_games || 0,
                     totalQuestionsAnswered: profile.total_questions || 0,
-                    theme: profile.theme || 'carbon'
+                    theme: profile.theme || 'carbon',
+                    lastSyncedUserId: currentUserId
                   });
                   document.documentElement.setAttribute('data-theme', profile.theme || 'carbon');
                }
@@ -382,7 +392,8 @@ export const useUserStore = create<UserState>()(
         totalGames: state.totalGames,
         totalQuestionsAnswered: state.totalQuestionsAnswered,
         theme: state.theme,
-        localQualifyingGames: state.localQualifyingGames
+        localQualifyingGames: state.localQualifyingGames,
+        lastSyncedUserId: state.lastSyncedUserId,
       }), 
     }
   )
