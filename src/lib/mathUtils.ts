@@ -9,32 +9,40 @@ export type Category =
   | 'div_table' | 'div_long'
   | 'other';
 
-export const categorizeQuestion = (num1: number, num2: number, op: Operation): Category => {
+export const categorizeQuestion = (num1: number, num2: number, op: Operation): Category[] => {
+  const cats: Category[] = [];
+
   switch (op) {
     case '+':
-      if (num1 < 10 && num2 < 10) return 'add_basic';
-      if (num1 < 100 && num2 < 100) return 'add_2digit';
-      return 'add_3digit';
+      if (num1 < 10 && num2 < 10) cats.push('add_basic');
+      else if (num1 < 100 && num2 < 100) cats.push('add_2digit');
+      else cats.push('add_3digit');
+      break;
     case '-':
-      if (num1 < 20 && num2 < 10) return 'sub_basic';
-      if (num1 < 100 && num2 < 100) return 'sub_2digit';
-      return 'sub_3digit';
+      if (num1 < 20 && num2 < 10) cats.push('sub_basic');
+      else if (num1 < 100 && num2 < 100) cats.push('sub_2digit');
+      else cats.push('sub_3digit');
+      break;
     case '*':
-      // Prioritize specific multiplication tables
-      if (num1 >= 2 && num1 <= 12) return `mult_${num1}` as Category;
-      if (num2 >= 2 && num2 <= 12) return `mult_${num2}` as Category;
+      if (num1 >= 2 && num1 <= 12) cats.push(`mult_${num1}` as Category);
+      if (num2 >= 2 && num2 <= 12) cats.push(`mult_${num2}` as Category);
       
-      if (num1 < 100 && num2 < 100) return 'mult_2digit';
-      return 'mult_3digit';
+      if (cats.length === 0) {
+        if (num1 < 100 && num2 < 100) cats.push('mult_2digit');
+        else cats.push('mult_3digit');
+      }
+      break;
     case '/':
-      // Divisor determines the table in division
-      if (num2 >= 2 && num2 <= 12) return `div_${num2}` as Category;
+      if (num2 >= 2 && num2 <= 12) cats.push(`div_${num2}` as Category);
       
-      if (num1 / num2 <= 12) return 'div_table';
-      return 'div_long';
-    default:
-      return 'other';
+      if (cats.length === 0) {
+        if (num1 / num2 <= 12) cats.push('div_table');
+        else cats.push('div_long');
+      }
+      break;
   }
+
+  return cats.length > 0 ? cats : ['other'];
 };
 
 export const getCategoryLabel = (category: string): string => {

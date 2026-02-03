@@ -11,7 +11,7 @@ export interface Question {
   operation: Operation;
   answer: number;
   startTime: number;
-  category: Category;
+  categories: Category[];
 }
 
 export interface GameSettings {
@@ -100,9 +100,9 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
       }
     }
 
-    const category = categorizeQuestion(num1, num2, op);
+    const categories = categorizeQuestion(num1, num2, op);
     const isMatch = !targetCategory || 
-                    category === targetCategory || 
+                    categories.includes(targetCategory) || 
                     (traitOp === op && (num1 === traitNum || num2 === traitNum));
 
     if (isMatch) {
@@ -113,7 +113,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
         operation: op,
         answer,
         startTime: Date.now(),
-        category,
+        categories,
       };
     }
     attempts++;
@@ -127,7 +127,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
     operation: traitOp || '+',
     answer: 20,
     startTime: Date.now(),
-    category: targetCategory || 'add_basic',
+    categories: targetCategory ? [targetCategory] : ['add_basic'],
   };
 };
 

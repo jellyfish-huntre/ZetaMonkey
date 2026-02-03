@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
 import { useGameStore } from '../store/gameStore';
 import { getCategoryLabel, type Category } from '../lib/mathUtils';
-import { ArrowLeft, Beaker, CheckCircle2, Clock, Crosshair, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Beaker, CheckCircle2, Clock, Crosshair, HelpCircle, Eye, EyeOff } from 'lucide-react';
 import styles from './LabPage.module.css';
 
 const ALL_CATEGORIES: Category[] = [
@@ -25,6 +25,7 @@ export default function LabPage() {
   const { startGame, settings } = useGameStore();
   const [stats, setStats] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
+  const [hideEmpty, setHideEmpty] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -53,7 +54,13 @@ export default function LabPage() {
           <Beaker size={24} className={styles.icon} />
           <h1 className={styles.title}>Monkey Lab</h1>
         </div>
-        <div style={{ width: 80 }} />
+        <button 
+          className={styles.toggleBtn}
+          onClick={() => setHideEmpty(!hideEmpty)}
+        >
+          {hideEmpty ? <Eye size={18} /> : <EyeOff size={18} />}
+          {hideEmpty ? 'Show All' : 'Hide Empty'}
+        </button>
       </header>
 
       <main className={styles.content}>
@@ -62,7 +69,9 @@ export default function LabPage() {
         </div>
 
         <div className={styles.grid}>
-          {ALL_CATEGORIES.map(cat => {
+          {ALL_CATEGORIES
+            .filter(cat => !hideEmpty || stats[cat])
+            .map(cat => {
             const data = stats[cat];
             return (
               <div key={cat} className={`${styles.card} ${data ? styles.hasData : ''}`}>

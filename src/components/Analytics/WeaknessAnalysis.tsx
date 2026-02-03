@@ -35,7 +35,7 @@ export const WeaknessAnalysis: React.FC = () => {
 
   // Only show top 3 weaknesses or areas needing most help
   const topWeaknesses = weaknesses
-    .filter(w => w.accuracy < 90 || w.avgTime > 3000)
+    .filter(w => w.accuracy < 95 || w.avgTime > 4000)
     .slice(0, 3);
 
   if (topWeaknesses.length === 0) return null;

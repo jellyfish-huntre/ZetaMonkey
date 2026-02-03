@@ -323,16 +323,26 @@ export const useUserStore = create<UserState>()(
 
           // 2. Record individual question responses (only if game was recorded successfully)
           if (gameData && history.length > 0) {
-            const responses = history.map(h => ({
-              user_id: user.id,
-              num1: h.question.num1,
-              num2: h.question.num2,
-              operation: h.question.operation,
-              category: h.question.category,
-              is_correct: h.isCorrect,
-              mistakes: h.mistakes || 0,
-              time_taken: h.timeTaken
-            }));
+            const responses: any[] = [];
+            
+            history.forEach(h => {
+              // Now that we have multiple categories, we record one entry per category
+              // so the weakness analysis can aggregate by category naturally.
+              const catArray = h.question.categories || [h.question.category || 'other'];
+              
+              catArray.forEach((cat: string) => {
+                responses.push({
+                  user_id: user.id,
+                  num1: h.question.num1,
+                  num2: h.question.num2,
+                  operation: h.question.operation,
+                  category: cat,
+                  is_correct: h.isCorrect,
+                  mistakes: h.mistakes || 0,
+                  time_taken: h.timeTaken
+                });
+              });
+            });
 
             // Insert in batches of 100 to be safe
             for (let i = 0; i < responses.length; i += 100) {
@@ -398,17 +408,22 @@ export const useUserStore = create<UserState>()(
         });
 
         // Convert to array and calculate metrics
-        // Metrics: Effective Accuracy = (Total Questions / (Total Questions + Total Mistakes)) * 100
-        // This penalizes retries heavily, which is good for weakness ID.
         const results = Object.entries(analysis)
           .map(([category, stats]) => ({
             category,
             avgTime: stats.totalTime / stats.count,
-            // accuracy: ((stats.count - stats.mistakes) / stats.count) * 100, // Old logic
-            accuracy: (stats.count / (stats.count + stats.mistakes)) * 100, // New "Effective Accuracy"
+            accuracy: (stats.count / (stats.count + stats.mistakes)) * 100, // "Effective Accuracy"
             totalQuestions: stats.count
           }))
-          .filter(a => a.totalQuestions >= minQuestions); // Only show weaknesses with at least minQuestions samples
+          .filter(a => {
+            // FILTER: Don't show "weaknesses" that aren't actually weaknesses
+            if (a.totalQuestions < minQuestions) return false;
+            
+            // If accuracy is nearly perfect (> 98%) AND speed is good (< 2.5s), it's not a weakness
+            if (a.accuracy >= 98 && a.avgTime < 2500) return false;
+            
+            return true;
+          });
 
         // Deduplication: Map categories to their labels and keep only the worst-performing one for identical labels
         // e.g. "mult_11" -> "Multiplying by 11", "* 11" -> "Multiplying by 11"
