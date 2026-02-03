@@ -40,7 +40,6 @@ export default function Game() {
     theme, 
     user, 
     signOut, 
-    checkSession, 
     recordGame, 
     submitLeaderboardScore 
   } = useUserStore();
