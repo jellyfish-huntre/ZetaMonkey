@@ -4,11 +4,12 @@ import { useGameStore } from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { isDefaultSettings, type Operation } from '../../lib/mathEngine';
-import { Play, RotateCcw, LogIn, LogOut, User as UserIcon, Trophy, Sliders } from 'lucide-react';
+import { Play, RotateCcw, LogIn, LogOut, User as UserIcon, Trophy, Sliders, Beaker } from 'lucide-react';
 import styles from './Game.module.css';
 import PerformanceGraph from '../Charts/PerformanceGraph'; 
 import AuthModal from '../Auth/AuthModal';
 import SettingsModal from '../Settings/SettingsModal';
+import { WeaknessAnalysis } from '../Analytics/WeaknessAnalysis';
 
 export default function Game() {
   const { 
@@ -26,7 +27,9 @@ export default function Game() {
     endGame,
     skipsCount,
     settings,
-    finishReason
+    finishReason,
+    targetCategory,
+    incrementMistakes
   } = useGameStore();
 
   const { 
@@ -45,38 +48,38 @@ export default function Game() {
   const navigate = useNavigate();
 
   const [input, setInput] = useState('');
-  const [mistakes, setMistakes] = useState(0);
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Check auth session
-  useEffect(() => {
-    checkSession();
-  }, [checkSession]);
 
-  // Initialize theme
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
 
   // Update stats on finish
   useEffect(() => {
-    if (status === 'finished' && finishReason === 'time_up') {
-      updateHighScore(score);
-      incrementGamesTerm(score);
+    if (status === 'finished') {
+      const isTimeUp = finishReason === 'time_up';
+      
+      // Only update official lifetime stats if the game was completed fully
+      if (isTimeUp) {
+        updateHighScore(score);
+        incrementGamesTerm(score);
+      }
       
       const totalQuestions = gameHistory.length;
+      if (totalQuestions === 0) return; // Nothing to record
+
       const correctCount = gameHistory.filter(h => h.isCorrect).length;
-      const accuracy = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+      const totalMistakes = gameHistory.reduce((acc, h) => acc + (h.mistakes || 0), 0);
+      const accuracy = Math.round((correctCount / (correctCount + totalMistakes)) * 100) || 0;
       const qpm = Math.round(correctCount / (duration / 60));
 
-      const isEligible = isDefaultSettings(settings) && skipsCount === 0;
+      const isEligible = isTimeUp && isDefaultSettings(settings) && skipsCount === 0 && !targetCategory;
       
       if (user) {
-        recordGame(score, qpm, accuracy);
+        // ALWAYS record the session data if logged in, so Lab metrics reflect the work done
+        recordGame(score, qpm, accuracy, gameHistory, targetCategory);
 
-        // Submit to leaderboard if qualifying
+        // Submit to leaderboard only if qualifying and time was up
         if (isEligible && score > 0) {
           submitLeaderboardScore(score, qpm, accuracy);
         }
@@ -97,10 +100,13 @@ export default function Game() {
     return () => clearInterval(interval);
   }, [status, tick]);
 
-  // Focus input on game start
+  // Focus input and clear state on game start
   useEffect(() => {
-    if (status === 'playing' && inputRef.current) {
-      inputRef.current.focus();
+    if (status === 'playing') {
+      setInput('');
+      if (inputRef.current) {
+        inputRef.current.focus();
+      }
     }
   }, [status]);
 
@@ -116,9 +122,8 @@ export default function Game() {
     if (currentQuestion) {
       const numVal = parseInt(val, 10);
       if (!isNaN(numVal) && numVal === currentQuestion.answer) {
-        submitAnswer(val, mistakes);
+        submitAnswer(val);
         setInput('');
-        setMistakes(0);
       }
     }
   };
@@ -132,13 +137,9 @@ export default function Game() {
          e.preventDefault();
          
          // If we are in settings or auth, maybe we shouldn't restart?
-         // But user asked for "Pressing space while the game is ongoing doesn't restart the run"
-         // Assuming if input is not one of *our* controls (like settings input)
-         // The main game input is always focused. 
-         
-         // Check if a modal is open
          if (showAuth || showSettings) return;
 
+         setInput('');
          startGame(120, currentSettings);
          return;
       }
@@ -150,7 +151,7 @@ export default function Game() {
       if (e.key === 'Backspace' && status === 'playing') {
         // Check actual input value from ref to avoid stale closure issues
         if (inputRef.current && inputRef.current.value.length > 0) {
-           setMistakes(m => m + 1);
+           incrementMistakes();
         }
       }
 
@@ -164,7 +165,6 @@ export default function Game() {
          if (status === 'playing') {
              skipQuestion();
              setInput('');
-             setMistakes(0);
          }
       }
     };
@@ -361,6 +361,9 @@ export default function Game() {
               <button className={styles.navLink} onClick={() => navigate('/leaderboard')}>
                 <Trophy size={18} /> Leaderboard
               </button>
+              <button className={styles.navLink} onClick={() => navigate('/lab')}>
+                <Beaker size={18} /> Lab
+              </button>
             </div>
             <div className={styles.navRight}>
               <button className={styles.navLink} onClick={() => setShowSettings(true)}>
@@ -397,6 +400,7 @@ export default function Game() {
                   <span className={styles.statNum}>{totalGames}</span>
                </div>
             </div>
+            <WeaknessAnalysis />
 
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>

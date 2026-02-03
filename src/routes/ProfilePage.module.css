@@ -172,6 +172,27 @@
 .scoreCell {
   font-weight: 700;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+}
+
+.targetBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  margin-left: 0.75rem;
+}
+
+.targetBadge svg {
+  color: var(--text-primary);
 }
 
 .inlineIcon {

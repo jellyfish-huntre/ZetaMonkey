@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { generateQuestion, checkAnswer, type Question, type GameSettings, DEFAULT_SETTINGS } from '../lib/mathEngine';
+import { generateQuestion, checkAnswer, type Question, type GameSettings, type Category, DEFAULT_SETTINGS } from '../lib/mathEngine';
 
 interface GameState {
   status: 'idle' | 'playing' | 'finished';
@@ -16,16 +16,19 @@ interface GameState {
     mistakes?: number;
   }>;
   skipsCount: number;
+  mistakes: number;
   settings: GameSettings;
+  targetCategory: Category | null;
   
   finishReason: 'time_up' | 'aborted' | null;
   
   // Actions
-  startGame: (duration?: number, settings?: GameSettings) => void;
-  submitAnswer: (answer: string, mistakes?: number) => void;
+  startGame: (duration?: number, settings?: GameSettings, targetCategory?: Category) => void;
+  submitAnswer: (answer: string) => void;
   resetGame: () => void;
   tick: () => void;
   skipQuestion: () => void;
+  incrementMistakes: () => void;
   endGame: () => void;
 }
 
@@ -37,25 +40,33 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentQuestion: null,
   gameHistory: [],
   skipsCount: 0,
+  mistakes: 0,
   settings: DEFAULT_SETTINGS,
+  targetCategory: null,
   finishReason: null,
 
-  startGame: (duration = 120, settings = DEFAULT_SETTINGS) => {
+  startGame: (duration = 120, settings = DEFAULT_SETTINGS, targetCategory: Category | null = null) => {
     set({
       status: 'playing',
       score: 0,
       timeLeft: duration,
       duration: duration,
-      currentQuestion: generateQuestion(settings),
+      currentQuestion: generateQuestion(settings, targetCategory || undefined),
       gameHistory: [],
       skipsCount: 0,
+      mistakes: 0,
       settings: settings,
+      targetCategory: targetCategory,
       finishReason: null,
     });
   },
 
-  submitAnswer: (answer: string, mistakes = 0) => {
-    const { currentQuestion, score, gameHistory, settings } = get();
+  incrementMistakes: () => {
+    set((state) => ({ mistakes: state.mistakes + 1 }));
+  },
+
+  submitAnswer: (answer: string) => {
+    const { currentQuestion, score, gameHistory, settings, targetCategory, mistakes } = get();
     if (!currentQuestion) return;
 
     const isCorrect = checkAnswer(currentQuestion, answer);
@@ -74,12 +85,13 @@ export const useGameStore = create<GameState>((set, get) => ({
           mistakes,
         },
       ],
-      currentQuestion: generateQuestion(settings),
+      mistakes: 0, // Reset for next question
+      currentQuestion: generateQuestion(settings, targetCategory || undefined),
     });
   },
 
   skipQuestion: () => {
-    const { currentQuestion, gameHistory, skipsCount, settings } = get();
+    const { currentQuestion, gameHistory, skipsCount, settings, targetCategory, mistakes } = get();
     if (!currentQuestion) return;
     
     const timeTaken = Date.now() - currentQuestion.startTime;
@@ -94,9 +106,11 @@ export const useGameStore = create<GameState>((set, get) => ({
           answerGiven: 'SKIPPED',
           isCorrect: false,
           timestamp: Date.now(),
+          mistakes,
         }
       ],
-      currentQuestion: generateQuestion(settings),
+      mistakes: 0, // Reset for next question
+      currentQuestion: generateQuestion(settings, targetCategory || undefined),
     });
   },
 
@@ -108,6 +122,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentQuestion: null,
       gameHistory: [],
       skipsCount: 0,
+      targetCategory: null,
       finishReason: null,
     });
   },

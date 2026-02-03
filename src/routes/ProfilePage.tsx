@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
-import { ArrowLeft, Trophy, Activity, Calendar, LogOut } from 'lucide-react';
+import { ArrowLeft, Trophy, Activity, Calendar, LogOut, Crosshair } from 'lucide-react';
+import { getCategoryLabel } from '../lib/mathUtils';
 import styles from './ProfilePage.module.css';
 
 export default function ProfilePage() {
@@ -96,7 +97,14 @@ export default function ProfilePage() {
                           {new Date(game.created_at).toLocaleDateString()}
                         </span>
                       </td>
-                      <td className={styles.scoreCell}>{game.score}</td>
+                      <td className={styles.scoreCell}>
+                        {game.score}
+                        {game.target_category && (
+                          <div className={styles.targetBadge} title={`Practice: ${getCategoryLabel(game.target_category)}`}>
+                            <Crosshair size={10} /> Practice
+                          </div>
+                        )}
+                      </td>
                       <td>{game.qpm}</td>
                       <td>{game.accuracy}%</td>
                     </tr>
