@@ -24,6 +24,24 @@ export default function MistakesPage() {
 
   if (loading) return <div className={styles.loading}>Loading mistakes...</div>;
 
+  // Group mistakes by timestamp + problem to handle multi-category entries
+  const groupedMistakes: any[] = [];
+  const seen = new Map<string, any>();
+
+  mistakes.forEach(m => {
+    const key = `${m.created_at}_${m.num1}_${m.num2}_${m.operation}`;
+    if (seen.has(key)) {
+      const existing = seen.get(key);
+      if (!existing.categories.includes(m.category)) {
+        existing.categories.push(m.category);
+      }
+    } else {
+      const entry = { ...m, categories: [m.category] };
+      seen.set(key, entry);
+      groupedMistakes.push(entry);
+    }
+  });
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
@@ -35,19 +53,23 @@ export default function MistakesPage() {
       </header>
 
       <div className={styles.mistakesList}>
-        {mistakes.length === 0 ? (
+        {groupedMistakes.length === 0 ? (
           <div className={styles.emptyState}>
             <AlertCircle size={48} />
             <p>No mistakes recorded yet. Keep practicing!</p>
           </div>
         ) : (
-          mistakes.map((m) => (
+          groupedMistakes.map((m) => (
             <div key={m.id} className={`${styles.mistakeCard} ${!m.is_correct ? styles.incorrect : ''}`}>
               <div className={styles.problemInfo}>
                 <span className={styles.problem}>
                   {m.num1} {m.operation === '*' ? '×' : m.operation === '/' ? '÷' : m.operation} {m.num2}
                 </span>
-                <span className={styles.label}>{getCategoryLabel(m.category)}</span>
+                <div className={styles.labels}>
+                  {m.categories.map((cat: string) => (
+                    <span key={cat} className={styles.label}>{getCategoryLabel(cat)}</span>
+                  ))}
+                </div>
               </div>
               
               <div className={styles.stats}>

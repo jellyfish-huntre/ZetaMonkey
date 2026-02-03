@@ -75,9 +75,18 @@
   font-family: var(--font-mono);
 }
 
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .label {
   font-size: 0.85rem;
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
 }
 
 .stats {

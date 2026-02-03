@@ -393,18 +393,10 @@ export const useUserStore = create<UserState>()(
 
         data.forEach(resp => {
           const mistakes = resp.mistakes || 0;
-          // 1. Broad category (e.g., mult_table)
+          // Aggregation is now purely by the category column.
+          // Since we record multiple rows for multi-category questions, 
+          // this naturally populates each specific bucket.
           addStat(resp.category, resp.is_correct, resp.time_taken, mistakes);
-          
-          // 2. Specific traits (operation + specific number)
-          // We track numbers 2-15 specifically as they are most common for drill-down
-          if (resp.operation === '*' || resp.operation === '/') {
-            if (resp.num2 >= 2 && resp.num2 <= 15) addStat(`${resp.operation} ${resp.num2}`, resp.is_correct, resp.time_taken, mistakes);
-            if (resp.operation === '*' && resp.num1 >= 2 && resp.num1 <= 15) addStat(`${resp.operation} ${resp.num1}`, resp.is_correct, resp.time_taken, mistakes);
-          } else {
-            // Addition/Subtraction
-            if (resp.num2 >= 2 && resp.num2 <= 15) addStat(`${resp.operation} ${resp.num2}`, resp.is_correct, resp.time_taken, mistakes);
-          }
         });
 
         // Convert to array and calculate metrics
@@ -423,6 +415,14 @@ export const useUserStore = create<UserState>()(
             if (a.accuracy >= 98 && a.avgTime < 2500) return false;
             
             return true;
+          })
+          .sort((a, b) => {
+            // SORT: Accuracy is the most important (ascending - lowest accuracy first)
+            if (Math.abs(a.accuracy - b.accuracy) > 5) { // Only prioritize if > 5% diff
+              return a.accuracy - b.accuracy;
+            }
+            // Then Average Time (descending - highest time first)
+            return b.avgTime - a.avgTime;
           });
 
         // Deduplication: Map categories to their labels and keep only the worst-performing one for identical labels
@@ -536,7 +536,23 @@ export const useUserStore = create<UserState>()(
           console.error('Error fetching leaderboard:', error);
           return [];
         }
-        return data || [];
+
+        if (!data) return [];
+
+        // Implement tiebreakers:
+        // 1. Score (DESC)
+        // 2. Accuracy (DESC)
+        // 3. Created At (ASC - oldest first)
+        return [...data].sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          if (b.accuracy !== a.accuracy) {
+            return b.accuracy - a.accuracy;
+          }
+          // created_at ASC (smaller timestamp = older)
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        });
       },
 
       submitLeaderboardScore: async (score, qpm, accuracy) => {
