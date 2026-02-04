@@ -1,14 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useUserStore } from '../store/userStore';
-import { ArrowLeft, Trophy, Activity, Calendar, LogOut, Crosshair } from 'lucide-react';
-import { getCategoryLabel } from '../lib/mathUtils';
+import { ArrowLeft, LogOut } from 'lucide-react';
+import LifetimeDashboard from '../components/Profile/LifetimeDashboard';
 import styles from './ProfilePage.module.css';
+
+interface Game {
+  id: string;
+  created_at: string;
+  score: number;
+  qpm: number;
+  accuracy: number;
+  target_category?: string | null;
+}
 
 export default function ProfilePage() {
   const navigate = useNavigate();
-  const { user, highScore, totalGames, fetchHistory, signOut } = useUserStore();
-  const [history, setHistory] = useState<any[]>([]);
+  const { user, highScore, totalGames, totalQuestionsAnswered, fetchHistory, signOut } = useUserStore();
+  const [history, setHistory] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,6 +39,34 @@ export default function ProfilePage() {
 
     loadHistory();
   }, [user, navigate, fetchHistory]);
+
+  const handleExportCSV = useCallback(() => {
+    if (history.length === 0) return;
+
+    const headers = ['Date', 'Score', 'QPM', 'Accuracy', 'Target Category'];
+    const rows = history.map(game => [
+      new Date(game.created_at).toLocaleString(),
+      game.score,
+      game.qpm,
+      game.accuracy,
+      game.target_category || 'All'
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `zetamonkey_history_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [history]);
 
   if (!user) return null;
 
@@ -53,22 +90,13 @@ export default function ProfilePage() {
           <p className={styles.userEmail}>{user.email}</p>
         </section>
 
-        <section className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <Trophy className={styles.statIcon} size={24} color="#f59e0b" />
-            <div className={styles.statInfo}>
-              <span className={styles.statLabel}>High Score</span>
-              <span className={styles.statValue}>{highScore}</span>
-            </div>
-          </div>
-          <div className={styles.statCard}>
-            <Activity className={styles.statIcon} size={24} color="#3b82f6" />
-            <div className={styles.statInfo}>
-              <span className={styles.statLabel}>Total Games</span>
-              <span className={styles.statValue}>{totalGames}</span>
-            </div>
-          </div>
-        </section>
+        <LifetimeDashboard 
+          history={history}
+          totalGames={totalGames}
+          totalQuestions={totalQuestionsAnswered}
+          highScore={highScore}
+          onExportCSV={handleExportCSV}
+        />
 
         <section className={styles.historySection}>
           <h2 className={styles.sectionTitle}>Match History</h2>
@@ -93,17 +121,11 @@ export default function ProfilePage() {
                     <tr key={game.id}>
                       <td>
                         <span className={styles.dateCell}>
-                          <Calendar size={14} className={styles.inlineIcon} />
                           {new Date(game.created_at).toLocaleDateString()}
                         </span>
                       </td>
                       <td className={styles.scoreCell}>
                         {game.score}
-                        {game.target_category && (
-                          <div className={styles.targetBadge} title={`Practice: ${getCategoryLabel(game.target_category)}`}>
-                            <Crosshair size={10} /> Practice
-                          </div>
-                        )}
                       </td>
                       <td>{game.qpm}</td>
                       <td>{game.accuracy}%</td>

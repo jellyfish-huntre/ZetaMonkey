@@ -1,0 +1,142 @@
+.dashboard {
+  margin-bottom: 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+  color: var(--text-secondary);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+.statCard {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: all 0.2s;
+}
+
+.statCard:hover {
+  border-color: var(--accent);
+  background: var(--bg-primary);
+  transform: translateY(-2px);
+}
+
+.statHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  text-transform: lowercase;
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+.icon {
+  color: var(--accent);
+}
+
+.statValue {
+  font-size: 2.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  line-height: 1;
+}
+
+.chartSection {
+  width: 100%;
+}
+
+.chartHeader {
+  margin-bottom: 1rem;
+}
+
+.chartTitle {
+  font-size: 0.75rem;
+  text-transform: lowercase;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  margin: 0;
+}
+
+.chartContainer {
+  width: 100%;
+}
+
+.detailsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+}
+
+.gridColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.gridItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gridLabel {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.gridValue {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.exportBtn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  width: 100%;
+  justify-content: center;
+}
+
+.exportBtn:hover {
+  background: var(--bg-primary);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .statsGrid, .detailsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .statsGrid, .detailsGrid {
+    grid-template-columns: 1fr;
+  }
+}
