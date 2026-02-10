@@ -37,97 +37,160 @@ export const DEFAULT_SETTINGS: GameSettings = {
 };
 
 export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targetCategory?: Category): Question => {
+  const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+  
+  const createQ = (n1: number, n2: number, op: Operation): Question => {
+    let ans = 0;
+    if (op === '+') ans = n1 + n2;
+    if (op === '-') ans = n1 - n2;
+    if (op === '*') ans = n1 * n2;
+    if (op === '/') ans = n1 / n2; // Assumes clean division provided by logic
+    
+    return {
+      id: crypto.randomUUID(),
+      num1: n1,
+      num2: n2,
+      operation: op,
+      answer: ans,
+      startTime: Date.now(),
+      categories: categorizeQuestion(n1, n2, op),
+    };
+  };
+
+  if (targetCategory) {
+    // 1. Handle dynamic/trait categories (e.g. "* 13")
+    const traitMatch = targetCategory.match(/^([\+\-\*\/])\s*(\d+)$/);
+    if (traitMatch) {
+      const op = traitMatch[1] as Operation;
+      const num = parseInt(traitMatch[2]);
+      if (op === '+') return createQ(num, rand(2, 100), '+'); // or randomize order
+      if (op === '-') return createQ(rand(num, num + 100), num, '-');
+      if (op === '*') return createQ(num, rand(2, 12), '*');
+      if (op === '/') return createQ(num * rand(2, 12), num, '/');
+    }
+
+    // 2. Handle specific named categories
+    if (targetCategory === 'add_basic') return createQ(rand(2, 9), rand(2, 9), '+');
+    if (targetCategory === 'add_2digit') return createQ(rand(10, 99), rand(10, 99), '+');
+    if (targetCategory === 'add_3digit') return createQ(rand(100, 999), rand(100, 999), '+');
+
+    if (targetCategory === 'sub_basic') {
+      const ans = rand(2, 9);
+      const sub = rand(2, 9);
+      return createQ(ans + sub, sub, '-');
+    }
+    if (targetCategory === 'sub_2digit') {
+      const ans = rand(10, 99);
+      const sub = rand(10, 99);
+      return createQ(ans + sub, sub, '-');
+    }
+    if (targetCategory === 'sub_3digit') {
+      const ans = rand(100, 999);
+      const sub = rand(100, 999);
+      return createQ(ans + sub, sub, '-');
+    }
+
+    // Multiplication
+    if (targetCategory.startsWith('mult_')) {
+      const suffix = targetCategory.replace('mult_', '');
+      const n = parseInt(suffix);
+      if (!isNaN(n)) {
+        // mult_2 ... mult_12
+        return Math.random() > 0.5 
+          ? createQ(n, rand(2, 100), '*')
+          : createQ(rand(2, 100), n, '*');
+      }
+      if (targetCategory === 'mult_2digit') return createQ(rand(10, 99), rand(10, 99), '*');
+      if (targetCategory === 'mult_3digit') {
+          // At least one number >= 100
+          const n1 = rand(100, 999);
+          const n2 = rand(2, 999); // Can be any size really, but let's keep it reasonable
+          return Math.random() > 0.5 ? createQ(n1, n2, '*') : createQ(n2, n1, '*');
+      }
+      if (targetCategory === 'mult_table') return createQ(rand(2, 12), rand(2, 12), '*');
+    }
+
+    // Division
+    if (targetCategory.startsWith('div_')) {
+      const suffix = targetCategory.replace('div_', '');
+      const n = parseInt(suffix);
+      if (!isNaN(n)) {
+        // div_2 ... div_12 (Divide BY n)
+        const ans = rand(2, 100);
+        return createQ(ans * n, n, '/');
+      }
+      if (targetCategory === 'div_table') {
+        // Result <= 12, Divisor ? 
+        // Logic: Table usually means within 12x12
+        const n2 = rand(2, 12);
+        const ans = rand(2, 12);
+        return createQ(ans * n2, n2, '/');
+      }
+      if (targetCategory === 'div_long') {
+        // Divisor > 12
+        const n2 = rand(13, 99); 
+        const ans = rand(2, 50);
+        return createQ(ans * n2, n2, '/');
+      }
+    }
+    
+    // 'other' or unmatched
+  }
+
+  // DEFAULT / FALLBACK GENERATION (Use settings)
   const ops = settings.operations.length > 0 ? settings.operations : DEFAULT_SETTINGS.operations;
   
-  let num1 = 0;
-  let num2 = 0;
-  let op: Operation = '+';
-  let answer = 0;
-
-  // Simple retry loop for targetCategory
-  // Parse trait if present: "* 13", "/ 7", "+ 15", "- 8"
-  const traitMatch = targetCategory?.match(/^([\+\-\*\/])\s*(\d+)$/);
-  const traitOp = traitMatch ? traitMatch[1] as Operation : null;
-  const traitNum = traitMatch ? parseInt(traitMatch[2]) : null;
-
   let attempts = 0;
   while (attempts < 50) {
-    op = traitOp || ops[Math.floor(Math.random() * ops.length)];
+    const op = ops[Math.floor(Math.random() * ops.length)];
+    let n1 = 0, n2 = 0;
     
+    // ... existing random logic ...
     switch (op) {
       case '+': {
         const { min, max } = settings.ranges.add;
-        num1 = Math.floor(Math.random() * (max - min + 1)) + min;
-        num2 = Math.floor(Math.random() * (max - min + 1)) + min;
-        if (traitOp === '+' && traitNum !== null) {
-          if (Math.random() > 0.5) num1 = traitNum; else num2 = traitNum;
-        }
-        answer = num1 + num2;
+        n1 = rand(min, max);
+        n2 = rand(min, max);
         break;
       }
       case '-': {
         const { min, max } = settings.ranges.sub;
-        // Subtraction is Addition in reverse: (min-max) + (min-max)
-        answer = Math.floor(Math.random() * (max - min + 1)) + min;
-        num2 = Math.floor(Math.random() * (max - min + 1)) + min;
-        if (traitOp === '-' && traitNum !== null) {
-          num2 = traitNum;
-        }
-        num1 = answer + num2;
+        const ans = rand(min, max);
+        n2 = rand(min, max);
+        n1 = ans + n2;
         break;
       }
       case '*': {
         const { min, max } = settings.ranges.mult;
-        // Multiplication follows: (min-max) * (2-100) as per standard settings request
-        num1 = Math.floor(Math.random() * (max - min + 1)) + min;
-        num2 = Math.floor(Math.random() * 99) + 2; // 2-100
-        if (traitOp === '*' && traitNum !== null) {
-          if (Math.random() > 0.5) num1 = traitNum; else num2 = traitNum;
-        }
-        answer = num1 * num2;
+        n1 = rand(min, max);
+        n2 = rand(2, 100); // Standard multiply range
         break;
       }
       case '/': {
         const { min, max } = settings.ranges.div;
-        // Division is Multiplication in reverse: (Quotient 2-100) * (Divisor min-max)
-        answer = Math.floor(Math.random() * 99) + 2; // 2-100 (Quotient)
-        num2 = Math.floor(Math.random() * (max - min + 1)) + min; // 2-12 (Divisor)
-        if (traitOp === '/' && traitNum !== null) {
-          num2 = traitNum;
-        }
-        num1 = answer * num2;
+        const ans = rand(2, 100);
+        n2 = rand(min, max);
+        n1 = ans * n2;
         break;
       }
     }
 
-    const categories = categorizeQuestion(num1, num2, op);
-    const isMatch = !targetCategory || 
-                    categories.includes(targetCategory) || 
-                    (traitOp === op && (num1 === traitNum || num2 === traitNum));
-
-    if (isMatch) {
-      return {
-        id: crypto.randomUUID(),
-        num1,
-        num2,
-        operation: op,
-        answer,
-        startTime: Date.now(),
-        categories,
-      };
+    const q = createQ(n1, n2, op);
+    if (!targetCategory || q.categories.includes(targetCategory)) {
+        return q;
     }
     attempts++;
   }
 
-  // Fallback
+  // Ultimate fallback if random generation fails
   return {
     id: crypto.randomUUID(),
-    num1: traitNum || 10,
-    num2: (traitOp === '/' || traitOp === '-') ? (traitNum || 10) : 10,
-    operation: traitOp || '+',
+    num1: 10,
+    num2: 10,
+    operation: '+',
     answer: 20,
     startTime: Date.now(),
-    categories: targetCategory ? [targetCategory] : ['add_basic'],
+    categories: ['add_basic'],
   };
 };
 

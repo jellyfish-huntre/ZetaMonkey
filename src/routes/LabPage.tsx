@@ -103,7 +103,10 @@ export default function LabPage() {
 
                 <button 
                   className={styles.practiceBtn}
-                  onClick={() => startGame(120, settings, cat)}
+                  onClick={() => {
+                    startGame(120, settings, cat);
+                    navigate('/');
+                  }}
                 >
                   <Crosshair size={16} /> Target Practice
                 </button>
