@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
+import {
+  getUsernameValidationError,
+  sanitizeUsernameForDisplay,
+} from '../lib/usernameValidation';
 import type { User, Session } from '@supabase/supabase-js';
 import { getCategoryLabel } from '../lib/mathUtils';
 
@@ -172,12 +176,16 @@ export const useUserStore = create<UserState>()(
       },
 
       signUp: async (email, password, username) => {
+         const normalizedUsername = username.trim();
+         const usernameError = getUsernameValidationError(normalizedUsername);
+         if (usernameError) throw new Error(usernameError);
+
          const { highScore: localHighScore, theme: localTheme, totalGames: localTotalGames, totalQuestionsAnswered: localTotalQuestions } = get();
          const { data, error } = await supabase.auth.signUp({
             email,
             password,
             options: {
-               data: { username }
+               data: { username: normalizedUsername }
             }
          });
          
@@ -188,7 +196,7 @@ export const useUserStore = create<UserState>()(
              // Ensure profile exists immediately if trigger is slow or not set
              await supabase.from('profiles').upsert({
                id: data.user.id,
-               username,
+               username: normalizedUsername,
                high_score: localHighScore,
                theme: localTheme,
                total_games: localTotalGames,
@@ -552,7 +560,10 @@ export const useUserStore = create<UserState>()(
           }
           // created_at ASC (smaller timestamp = older)
           return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        });
+        }).map((entry) => ({
+          ...entry,
+          username: sanitizeUsernameForDisplay(entry.username || ''),
+        }));
       },
 
       submitLeaderboardScore: async (score, qpm, accuracy) => {

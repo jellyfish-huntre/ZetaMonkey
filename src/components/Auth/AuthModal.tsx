@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useUserStore } from '../../store/userStore';
 import { X, Mail, Lock, User } from 'lucide-react';
 import styles from './AuthModal.module.css';
+import { getUsernameValidationError, USERNAME_MAX_LENGTH } from '../../lib/usernameValidation';
 
 interface AuthModalProps {
   onClose: () => void;
@@ -26,6 +27,10 @@ export default function AuthModal({ onClose }: AuthModalProps) {
       if (isLogin) {
         await signIn(email, password);
       } else {
+        const usernameError = getUsernameValidationError(username);
+        if (usernameError) {
+          throw new Error(usernameError);
+        }
         await signUp(email, password, username);
       }
       onClose();
@@ -55,6 +60,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required={!isLogin}
+                maxLength={USERNAME_MAX_LENGTH}
                 className={styles.input}
               />
             </div>
