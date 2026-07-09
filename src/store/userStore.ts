@@ -5,6 +5,10 @@ import {
   getUsernameValidationError,
   sanitizeUsernameForDisplay,
 } from '../lib/usernameValidation';
+import {
+  isAllowedLeaderboardEntry,
+  MAX_LEADERBOARD_SCORE,
+} from '../lib/leaderboardValidation';
 import type { User, Session } from '@supabase/supabase-js';
 import { getCategoryLabel } from '../lib/mathUtils';
 
@@ -551,7 +555,7 @@ export const useUserStore = create<UserState>()(
         // 1. Score (DESC)
         // 2. Accuracy (DESC)
         // 3. Created At (ASC - oldest first)
-        return [...data].sort((a, b) => {
+        return [...data].filter(isAllowedLeaderboardEntry).sort((a, b) => {
           if (b.score !== a.score) {
             return b.score - a.score;
           }
@@ -570,6 +574,11 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user) return;
 
+        if (score < 0 || score > MAX_LEADERBOARD_SCORE) {
+          console.warn(`Leaderboard score rejected: score must be between 0 and ${MAX_LEADERBOARD_SCORE}.`);
+          return;
+        }
+
         const { error } = await supabase.from('leaderboard').insert({
           user_id: user.id,
           username: user.user_metadata.username || user.email?.split('@')[0],
@@ -583,6 +592,8 @@ export const useUserStore = create<UserState>()(
         }
       },
       addLocalQualifyingGame: (score, qpm, accuracy) => {
+        if (score < 0 || score > MAX_LEADERBOARD_SCORE) return;
+
         const { localQualifyingGames } = get();
         // Since we don't have individual question history for legacy guest sync,
         // we just record the summary. Real history is tracked in gameStore.
