@@ -1,5 +1,19 @@
 # React + TypeScript + Vite
 
+## Production setup
+
+Versus mode requires the SQL in `versus_schema.sql` to be applied to the Supabase project. In Supabase Realtime settings, keep Realtime enabled and allow public channels so guests can create and join fruit-code rooms.
+
+Configure the public client variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in Vercel. The legacy `VITE_SUPABASE_ANON_KEY` remains supported.
+
+The daily `/api/keep-alive` cron also requires these server-only Vercel variables:
+
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_ROLE_KEY`)
+- `CRON_SECRET` with a random value of at least 16 characters
+
+Never prefix the secret or service-role key with `VITE_`. After redeploying, verify the cron in Vercel's Cron Jobs page and confirm that an authorized request returns `{ "ok": true }`. The daily request mitigates Supabase Free project inactivity pausing; only a paid Supabase plan guarantees that a project will not be paused for inactivity.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

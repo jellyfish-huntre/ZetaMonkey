@@ -3,13 +3,51 @@ import { useNavigate } from 'react-router-dom';
 import { useGameStore } from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { useVersusStore } from '../../store/versusStore';
 import { isDefaultSettings, type Operation } from '../../lib/mathEngine';
-import { Play, RotateCcw, LogIn, LogOut, User as UserIcon, Trophy, Sliders, Beaker } from 'lucide-react';
+import { type FruitId } from '../../lib/versus';
+import {
+  Apple,
+  Banana,
+  Bean,
+  Cherry,
+  Citrus,
+  DoorOpen,
+  Grape,
+  Play,
+  Plus,
+  RotateCcw,
+  LogIn,
+  LogOut,
+  User as UserIcon,
+  Trophy,
+  Sliders,
+  Beaker,
+  Swords,
+  X,
+  type LucideIcon
+} from 'lucide-react';
 import styles from './Game.module.css';
 import PerformanceGraph from '../Charts/PerformanceGraph'; 
 import AuthModal from '../Auth/AuthModal';
 import SettingsModal from '../Settings/SettingsModal';
 import { WeaknessAnalysis } from '../Analytics/WeaknessAnalysis';
+
+type VersusView = 'closed' | 'menu' | 'createLobby' | 'join' | 'joinLobby';
+type FruitCodeOption = {
+  id: FruitId;
+  label: string;
+  Icon: LucideIcon;
+};
+
+const FRUIT_CODE_OPTIONS: FruitCodeOption[] = [
+  { id: 'banana', label: 'Banana', Icon: Banana },
+  { id: 'apple', label: 'Apple', Icon: Apple },
+  { id: 'grape', label: 'Grape', Icon: Grape },
+  { id: 'orange', label: 'Orange', Icon: Citrus },
+  { id: 'cherry', label: 'Cherry', Icon: Cherry },
+  { id: 'melon', label: 'Melon', Icon: Bean }
+];
 
 export default function Game() {
   const { 
@@ -29,7 +67,8 @@ export default function Game() {
     settings,
     finishReason,
     targetCategory,
-    incrementMistakes
+    incrementMistakes,
+    mode,
   } = useGameStore();
 
   const { 
@@ -44,18 +83,80 @@ export default function Game() {
     submitLeaderboardScore 
   } = useUserStore();
   const { settings: currentSettings, updateSettings } = useSettingsStore();
+  const {
+    phase: versusPhase,
+    connectionState: versusConnection,
+    roomCode,
+    opponentName,
+    opponentConnected,
+    opponentScore,
+    countdown,
+    disconnectRemaining,
+    result: versusResult,
+    resultReason: versusResultReason,
+    error: versusError,
+    createRoom,
+    joinRoom,
+    publishScore,
+    finishLocal,
+    leaveRoom,
+  } = useVersusStore();
   const navigate = useNavigate();
 
   const [input, setInput] = useState('');
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [versusView, setVersusView] = useState<VersusView>('closed');
+  const [joinCode, setJoinCode] = useState<FruitId[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isVersusOpen = versusView !== 'closed';
+
+  const openVersusMenu = () => {
+    setJoinCode([]);
+    setVersusView('menu');
+  };
+
+  const playerDisplayName = user?.user_metadata?.username || 'Guest';
+
+  const createVersusGame = async () => {
+    setVersusView('createLobby');
+    await createRoom(playerDisplayName);
+  };
+
+  const joinVersusGame = () => {
+    setJoinCode([]);
+    setVersusView('join');
+  };
+
+  const closeVersus = async () => {
+    await leaveRoom();
+    if (useGameStore.getState().mode === 'versus') resetGame();
+    setJoinCode([]);
+    setVersusView('closed');
+  };
+
+  const backToVersusMenu = async () => {
+    await leaveRoom();
+    resetGame();
+    setJoinCode([]);
+    setVersusView('menu');
+  };
+
+  const submitJoinCode = async () => {
+    if (joinCode.length !== 3) return;
+    const code = joinCode as [FruitId, FruitId, FruitId];
+    const joined = await joinRoom(code, playerDisplayName);
+    if (joined) setVersusView('joinLobby');
+  };
+
+  const lobbyCode = roomCode;
 
 
 
   // Update stats on finish
   useEffect(() => {
-    if (status === 'finished') {
+    if (status === 'finished' && mode === 'solo') {
       const isTimeUp = finishReason === 'time_up';
       
       // Only update official lifetime stats if the game was completed fully
@@ -88,7 +189,19 @@ export default function Game() {
         addLocalQualifyingGame(score, qpm, accuracy);
       }
     }
-  }, [status, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore, finishReason]);
+  }, [status, mode, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore, finishReason, targetCategory]);
+
+  useEffect(() => {
+    if (status === 'playing' && mode === 'versus') {
+      void publishScore(score);
+    }
+  }, [status, mode, score, publishScore]);
+
+  useEffect(() => {
+    if (status === 'finished' && mode === 'versus') {
+      void finishLocal(score);
+    }
+  }, [status, mode, score, finishLocal]);
 
   // Timer effect
   useEffect(() => {
@@ -136,7 +249,7 @@ export default function Game() {
          e.preventDefault();
          
          // If we are in settings or auth, maybe we shouldn't restart?
-         if (showAuth || showSettings) return;
+         if (showAuth || showSettings || isVersusOpen || mode === 'versus') return;
 
          setInput('');
          startGame(120, currentSettings);
@@ -155,7 +268,11 @@ export default function Game() {
       }
 
       if (e.key === 'Escape') {
-         if (e.shiftKey && status === 'playing') {
+         if (mode === 'versus') {
+           void leaveRoom();
+           resetGame();
+           setVersusView('closed');
+         } else if (e.shiftKey && status === 'playing') {
            endGame();
          } else {
            resetGame();
@@ -170,9 +287,50 @@ export default function Game() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings]);
+  }, [status, mode, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings, isVersusOpen, incrementMistakes, leaveRoom]);
 
   if (status === 'finished') {
+    if (mode === 'versus') {
+      const result = versusResult ?? (score === opponentScore ? 'tie' : score > opponentScore ? 'win' : 'loss');
+      const resultTitle = result === 'win' ? 'Victory' : result === 'loss' ? 'Defeat' : 'Tie Game';
+      const resultDetail = versusResultReason === 'forfeit'
+        ? result === 'win' ? 'Your opponent did not reconnect in time.' : 'You did not reconnect in time.'
+        : 'The shared two-minute timer has ended.';
+
+      return (
+        <div className={styles.container}>
+          <div className={styles.summary}>
+            <div className={`${styles.versusResultBadge} ${styles[`versusResult${result}`]}`}>
+              <Swords size={18} /> {resultTitle}
+            </div>
+            <h1 className={styles.scoreDisplay}>{score}</h1>
+            <p className={styles.scoreLabel}>Your Score</p>
+
+            <div className={styles.versusFinalScores}>
+              <div className={styles.statBox}>
+                <span className={styles.label}>You</span>
+                <span className={styles.value}>{score}</span>
+              </div>
+              <div className={styles.statBox}>
+                <span className={styles.label}>{opponentName}</span>
+                <span className={styles.value}>{opponentScore}</span>
+              </div>
+            </div>
+            <p className={styles.versusResultDetail}>{resultDetail}</p>
+
+            <div className={styles.actions}>
+              <button className={styles.btnPrimary} onClick={() => void backToVersusMenu()}>
+                <RotateCcw size={20} /> Play Again
+              </button>
+              <button className={styles.btnSecondary} onClick={() => void closeVersus()}>
+                Back to Menu
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // const totalQuestions = gameHistory.length; (unused now)
     const correctCount = gameHistory.filter(h => h.isCorrect).length;
     // Calculate accuracy based on mistakes: (Questions / (Questions + Mistakes)) * 100
@@ -239,13 +397,13 @@ export default function Game() {
         if (newOps.length > 0) updateSettings({ operations: newOps });
       };
 
-      const handleClassicRange = (opKey: string, field: 'min' | 'max', value: string) => {
+      const handleClassicRange = (opKey: keyof typeof currentSettings.ranges, field: 'min' | 'max', value: string) => {
         const num = parseInt(value, 10);
         if (isNaN(num)) return;
         updateSettings({
           ranges: {
             ...currentSettings.ranges,
-            [opKey]: { ...(currentSettings.ranges as any)[opKey], [field]: num }
+            [opKey]: { ...currentSettings.ranges[opKey], [field]: num }
           }
         });
       };
@@ -401,12 +559,149 @@ export default function Game() {
             </div>
             <WeaknessAnalysis />
 
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+            <div className={styles.homeActions}>
                <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
                  <Play size={24} /> Press Space
                </button>
+               <button className={styles.versusButton} onClick={openVersusMenu}>
+                 <span className={styles.newRibbon}>NEW!</span>
+                 <Swords size={18} /> Versus
+               </button>
             </div>
          </div>
+
+         {isVersusOpen && (
+           <div className={styles.versusOverlay} role="dialog" aria-modal="true" aria-labelledby="versus-title">
+             <div className={styles.versusPanel}>
+               <button className={styles.versusClose} onClick={closeVersus} title="Close Versus">
+                 <X size={18} />
+               </button>
+
+               {versusView === 'menu' && (
+                 <>
+                   <div className={styles.versusHeader}>
+                     <div className={styles.versusMark}><Swords size={24} /></div>
+                     <h2 id="versus-title">Versus</h2>
+                     <p>Race an opponent through the same two-minute question set.</p>
+                   </div>
+                   <div className={styles.versusChoices}>
+                     <button className={styles.versusChoice} onClick={() => void createVersusGame()}>
+                       <Plus size={22} />
+                       <span>Create Game</span>
+                     </button>
+                     <button className={styles.versusChoice} onClick={joinVersusGame}>
+                       <DoorOpen size={22} />
+                       <span>Join Game</span>
+                     </button>
+                   </div>
+                 </>
+               )}
+
+               {(versusView === 'createLobby' || versusView === 'joinLobby') && (
+                 <>
+                   <div className={styles.versusHeader}>
+                     <div className={styles.versusMark}><Swords size={24} /></div>
+                     <h2 id="versus-title">Versus Lobby</h2>
+                     <p>
+                       {versusPhase === 'reserving' || versusPhase === 'joining'
+                         ? 'Connecting to Supabase…'
+                         : countdown > 0
+                           ? `Match starts in ${countdown}…`
+                           : versusView === 'createLobby'
+                             ? 'Share this fruit code with your opponent.'
+                             : 'Connected to this Versus room.'}
+                     </p>
+                   </div>
+                   <div className={styles.fruitCode} aria-label="Game code">
+                     {[0, 1, 2].map(index => {
+                       const fruitId = lobbyCode?.[index];
+                       const fruit = FRUIT_CODE_OPTIONS.find(option => option.id === fruitId);
+                       const FruitIcon = fruit?.Icon;
+                       return fruit && FruitIcon ? (
+                         <div className={styles.fruitBox} key={`${fruit.id}-${index}`}>
+                           <FruitIcon className={styles.fruitIcon} aria-hidden="true" />
+                           <span>{fruit.label}</span>
+                         </div>
+                       ) : (
+                         <div className={`${styles.fruitBox} ${styles.emptyFruitBox}`} key={index}>
+                           <span className={styles.emptyFruit}>?</span>
+                         </div>
+                       );
+                     })}
+                   </div>
+                   {versusError && <div className={styles.versusError} role="alert">{versusError}</div>}
+                   <div className={styles.lobbyPlayers}>
+                     <div className={styles.playerSlot}>
+                       <span className={styles.playerDot} />
+                       <span>You</span>
+                     </div>
+                     <div className={opponentConnected ? styles.playerSlot : styles.playerSlotMuted}>
+                       <span className={styles.playerDot} />
+                       <span>{opponentConnected ? opponentName : 'Waiting for opponent'}</span>
+                     </div>
+                   </div>
+                   <div className={styles.lobbyStatus}>
+                     <span className={versusConnection === 'connected' ? styles.statusOnline : styles.statusOffline} />
+                     {versusConnection === 'connected' ? 'Realtime connected' : 'Connecting…'}
+                   </div>
+                   <button className={styles.btnSecondary} onClick={() => void backToVersusMenu()}>Back</button>
+                 </>
+               )}
+
+               {versusView === 'join' && (
+                 <>
+                   <div className={styles.versusHeader}>
+                     <div className={styles.versusMark}><DoorOpen size={24} /></div>
+                     <h2 id="versus-title">Join Game</h2>
+                     <p>Enter the three-fruit code from your opponent.</p>
+                   </div>
+                   <div className={styles.fruitCode} aria-label="Selected game code">
+                     {[0, 1, 2].map(index => {
+                       const fruit = FRUIT_CODE_OPTIONS.find(option => option.id === joinCode[index]);
+                       const FruitIcon = fruit?.Icon;
+                       return (
+                         <div className={`${styles.fruitBox} ${!fruit ? styles.emptyFruitBox : ''}`} key={index}>
+                           {fruit && FruitIcon ? (
+                             <>
+                               <FruitIcon className={styles.fruitIcon} aria-hidden="true" />
+                               <span>{fruit.label}</span>
+                             </>
+                           ) : (
+                             <span className={styles.emptyFruit}>?</span>
+                           )}
+                         </div>
+                       );
+                     })}
+                   </div>
+                   <div className={styles.fruitPicker}>
+                     {FRUIT_CODE_OPTIONS.map(fruit => (
+                       <button
+                         className={styles.fruitPickButton}
+                         key={fruit.id}
+                         disabled={versusPhase === 'joining'}
+                         onClick={() => setJoinCode(current => current.length < 3 ? [...current, fruit.id] : current)}
+                       >
+                         <fruit.Icon size={20} aria-hidden="true" />
+                         {fruit.label}
+                       </button>
+                     ))}
+                   </div>
+                   {versusError && <div className={styles.versusError} role="alert">{versusError}</div>}
+                   <div className={styles.joinActions}>
+                     <button className={styles.btnSecondary} onClick={() => setJoinCode([])}>Clear</button>
+                     <button
+                       className={styles.btnPrimary}
+                       disabled={joinCode.length < 3 || versusPhase === 'joining'}
+                       onClick={() => void submitJoinCode()}
+                     >
+                       {versusPhase === 'joining' ? 'Joining…' : 'Join Lobby'}
+                     </button>
+                   </div>
+                 </>
+               )}
+             </div>
+           </div>
+         )}
 
          {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
          {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
@@ -429,9 +724,35 @@ export default function Game() {
                <span className={styles.label}>{isClassic ? 'Score:' : 'Score'}</span>
                <span className={styles.value}>{score}</span>
              </div>
+             {mode === 'versus' && (
+               <div className={styles.stat}>
+                 <span className={styles.label}>{opponentName}</span>
+                 <span className={styles.value}>{opponentScore}</span>
+                 <span className={opponentConnected ? styles.opponentOnline : styles.opponentOffline}>
+                   {opponentConnected
+                     ? 'Connected'
+                     : disconnectRemaining !== null
+                       ? `Reconnecting · ${disconnectRemaining}s`
+                       : 'Disconnected'}
+                 </span>
+               </div>
+             )}
            </div>
            {!isClassic && (
-             <button className={styles.iconBtn} onClick={endGame} title="End Run Prematurely" style={{ marginLeft: 'auto' }}>
+             <button
+               className={styles.iconBtn}
+               onClick={() => {
+                 if (mode === 'versus') {
+                   void leaveRoom();
+                   resetGame();
+                   setVersusView('closed');
+                 } else {
+                   endGame();
+                 }
+               }}
+               title={mode === 'versus' ? 'Leave Match' : 'End Run Prematurely'}
+               style={{ marginLeft: 'auto' }}
+             >
                <RotateCcw size={20} />
              </button>
            )}
@@ -463,7 +784,11 @@ export default function Game() {
        
        {!isClassic && (
          <div className={styles.footer}>
-            <p>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</p>
+            <p>
+              {mode === 'versus'
+                ? <><b>Esc</b> leaves the match, <b>Enter</b> skips.</>
+                : <>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</>}
+            </p>
          </div>
        )}
     </div>

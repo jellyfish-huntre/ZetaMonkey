@@ -36,8 +36,26 @@ export const DEFAULT_SETTINGS: GameSettings = {
   duration: 120
 };
 
-export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targetCategory?: Category): Question => {
-  const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+export type RandomSource = () => number;
+
+export const createSeededRandom = (seed: number): RandomSource => {
+  let state = seed >>> 0;
+
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+};
+
+export const generateQuestion = (
+  settings: GameSettings = DEFAULT_SETTINGS,
+  targetCategory?: Category,
+  random: RandomSource = Math.random,
+): Question => {
+  const rand = (min: number, max: number) => Math.floor(random() * (max - min + 1)) + min;
   
   const createQ = (n1: number, n2: number, op: Operation): Question => {
     let ans = 0;
@@ -59,7 +77,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
 
   if (targetCategory) {
     // 1. Handle dynamic/trait categories (e.g. "* 13")
-    const traitMatch = targetCategory.match(/^([\+\-\*\/])\s*(\d+)$/);
+    const traitMatch = targetCategory.match(/^([+*/-])\s*(\d+)$/);
     if (traitMatch) {
       const op = traitMatch[1] as Operation;
       const num = parseInt(traitMatch[2]);
@@ -96,7 +114,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
       const n = parseInt(suffix);
       if (!isNaN(n)) {
         // mult_2 ... mult_12
-        return Math.random() > 0.5 
+        return random() > 0.5
           ? createQ(n, rand(2, 100), '*')
           : createQ(rand(2, 100), n, '*');
       }
@@ -105,7 +123,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
           // At least one number >= 100
           const n1 = rand(100, 999);
           const n2 = rand(2, 999); // Can be any size really, but let's keep it reasonable
-          return Math.random() > 0.5 ? createQ(n1, n2, '*') : createQ(n2, n1, '*');
+          return random() > 0.5 ? createQ(n1, n2, '*') : createQ(n2, n1, '*');
       }
       if (targetCategory === 'mult_table') return createQ(rand(2, 12), rand(2, 12), '*');
     }
@@ -142,7 +160,7 @@ export const generateQuestion = (settings: GameSettings = DEFAULT_SETTINGS, targ
   
   let attempts = 0;
   while (attempts < 50) {
-    const op = ops[Math.floor(Math.random() * ops.length)];
+    const op = ops[Math.floor(random() * ops.length)];
     let n1 = 0, n2 = 0;
     
     // ... existing random logic ...
