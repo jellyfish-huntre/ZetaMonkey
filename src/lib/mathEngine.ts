@@ -229,3 +229,10 @@ export const checkAnswer = (question: Question, input: string): boolean => {
   const inputNum = parseInt(input, 10);
   return !isNaN(inputNum) && inputNum === question.answer;
 };
+
+export const calculateAnswer = (num1: number, num2: number, operation: Operation): number => {
+  if (operation === '+') return num1 + num2;
+  if (operation === '-') return num1 - num2;
+  if (operation === '*') return num1 * num2;
+  return num1 / num2;
+};

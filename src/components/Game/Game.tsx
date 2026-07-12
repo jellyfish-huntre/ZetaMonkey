@@ -4,7 +4,7 @@ import { useGameStore } from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useVersusStore } from '../../store/versusStore';
-import { isDefaultSettings, type Operation } from '../../lib/mathEngine';
+import { type Operation } from '../../lib/mathEngine';
 import { type FruitId } from '../../lib/versus';
 import {
   Apple,
@@ -64,11 +64,16 @@ export default function Game() {
     skipQuestion,
     endGame,
     skipsCount,
-    settings,
     finishReason,
     targetCategory,
     incrementMistakes,
     mode,
+    leaderboardRun,
+    leaderboardVerification,
+    leaderboardResult,
+    startError,
+    startUnrankedGame,
+    verifyLeaderboardRun,
   } = useGameStore();
 
   const { 
@@ -80,7 +85,6 @@ export default function Game() {
     user, 
     signOut, 
     recordGame, 
-    submitLeaderboardScore 
   } = useUserStore();
   const { settings: currentSettings, updateSettings } = useSettingsStore();
   const {
@@ -109,6 +113,7 @@ export default function Game() {
   const [versusView, setVersusView] = useState<VersusView>('closed');
   const [joinCode, setJoinCode] = useState<FruitId[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const questionCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const isVersusOpen = versusView !== 'closed';
 
@@ -173,23 +178,19 @@ export default function Game() {
       const accuracy = Math.round((correctCount / (correctCount + totalMistakes)) * 100) || 0;
       const qpm = Math.round(correctCount / (duration / 60));
 
-      const isEligible = isTimeUp && isDefaultSettings(settings) && skipsCount === 0 && !targetCategory;
-      
       if (user) {
         // ALWAYS record the session data if logged in, so Lab metrics reflect the work done
         recordGame(score, qpm, accuracy, gameHistory, targetCategory);
 
-        // Submit to leaderboard only if qualifying and time was up
-        if (isEligible && score > 0) {
-          submitLeaderboardScore(score, qpm, accuracy);
-        }
-      } else if (isEligible && score > 0) {
-        // Track locally for guests to sync later
-        const { addLocalQualifyingGame } = useUserStore.getState();
-        addLocalQualifyingGame(score, qpm, accuracy);
       }
     }
-  }, [status, mode, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, settings, skipsCount, submitLeaderboardScore, finishReason, targetCategory]);
+  }, [status, mode, score, updateHighScore, incrementGamesTerm, user, gameHistory, duration, recordGame, finishReason, targetCategory]);
+
+  useEffect(() => {
+    if (status === 'finished' && mode === 'solo' && leaderboardRun && finishReason === 'time_up') {
+      void verifyLeaderboardRun();
+    }
+  }, [status, mode, leaderboardRun, finishReason, verifyLeaderboardRun]);
 
   useEffect(() => {
     if (status === 'playing' && mode === 'versus') {
@@ -222,6 +223,38 @@ export default function Game() {
     }
   }, [status]);
 
+  useEffect(() => {
+    const canvas = questionCanvasRef.current;
+    if (!canvas || !currentQuestion || !leaderboardRun || status !== 'playing') return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect();
+      const width = Math.max(320, rect.width || 520);
+      const height = Math.max(90, rect.height || 120);
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      const color = getComputedStyle(canvas).color || '#fff';
+      context.fillStyle = color;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.font = `700 ${Math.min(64, height * 0.56)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      const operator = currentQuestion.operation === '*' ? '×'
+        : currentQuestion.operation === '/' ? '÷'
+          : currentQuestion.operation;
+      context.fillText(`${currentQuestion.num1}  ${operator}  ${currentQuestion.num2}`, width / 2, height / 2);
+    };
+
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [currentQuestion, leaderboardRun, status, theme]);
+
   // Handle Input Changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -252,7 +285,7 @@ export default function Game() {
          if (showAuth || showSettings || isVersusOpen || mode === 'versus') return;
 
          setInput('');
-         startGame(120, currentSettings);
+         void startGame(120, currentSettings);
          return;
       }
 
@@ -341,23 +374,26 @@ export default function Game() {
       ? Math.round((correctCount / (correctCount + totalMistakes)) * 100) 
       : 0;
     const qpm = Math.round(correctCount / (duration / 60));
-    const isQualifying = isDefaultSettings(settings) && skipsCount === 0;
+    const isProtectedResult = Boolean(leaderboardRun);
+    const verifiedScore = leaderboardResult?.score ?? score;
+    const verifiedAccuracy = leaderboardResult?.accuracy ?? accuracy;
+    const verifiedQpm = leaderboardResult?.qpm ?? qpm;
 
     return (
       <div className={styles.container}>
         <div className={styles.summary}>
           <div className={styles.gameOverBadge}>Run Complete</div>
-          <h1 className={styles.scoreDisplay}>{score}</h1>
+          <h1 className={styles.scoreDisplay}>{verifiedScore}</h1>
           <p className={styles.scoreLabel}>Final Score</p>
           
           <div className={styles.finalStats}>
              <div className={styles.statBox}>
                <span className={styles.label}>Accuracy</span>
-               <span className={styles.value}>{accuracy}%</span>
+               <span className={styles.value}>{verifiedAccuracy}%</span>
              </div>
              <div className={styles.statBox}>
                <span className={styles.label}>Speed</span>
-               <span className={styles.value}>{qpm} <span style={{fontSize: '1rem'}}>QPM</span></span>
+               <span className={styles.value}>{verifiedQpm} <span style={{fontSize: '1rem'}}>QPM</span></span>
              </div>
              <div className={styles.statBox}>
                <span className={styles.label}>Skips</span>
@@ -365,22 +401,50 @@ export default function Game() {
              </div>
           </div>
 
-          {isQualifying && score > 0 && (
+          {isProtectedResult && leaderboardVerification === 'submitting' && (
+            <div className={styles.qualifyingBadge}>Verifying answers with the server…</div>
+          )}
+          {isProtectedResult && leaderboardVerification === 'error' && (
+            <div className={styles.verificationError}>
+              <p>{startError || 'This run could not be verified.'}</p>
+              <button className={styles.btnSecondary} onClick={() => void verifyLeaderboardRun()}>Retry Verification</button>
+            </div>
+          )}
+          {leaderboardResult?.eligible && verifiedScore > 0 && (
             <div className={styles.qualifyingBadge}>
-              <Trophy size={16} /> Qualified for Global Leaderboard
+              <Trophy size={16} /> {leaderboardResult.claimed
+                ? 'Added to Global Leaderboard'
+                : user ? 'Verified · leaderboard claim pending' : 'Verified · Sign in to claim'}
+            </div>
+          )}
+          {leaderboardResult && !leaderboardResult.eligible && (
+            <div className={styles.verificationError}>
+              Verified, but not eligible{leaderboardResult.eligibilityReason === 'skipped_question' ? ': a question was skipped.' : '.'}
             </div>
           )}
 
           <PerformanceGraph history={gameHistory} />
 
           <div className={styles.actions}>
-            <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
+            <button className={styles.btnPrimary} onClick={() => void startGame(120, currentSettings)}>
               <RotateCcw size={20} /> Play Again
             </button>
             <button className={styles.btnSecondary} onClick={resetGame}>
                Back to Menu
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'preparing') {
+    return (
+      <div className={styles.container}>
+        <div className={styles.summary}>
+          <div className={styles.gameOverBadge}>Ranked Solo</div>
+          <h1>Preparing 300 questions…</h1>
+          <p>The timer starts only after the complete server-generated batch is loaded.</p>
         </div>
       </div>
     );
@@ -500,8 +564,17 @@ export default function Game() {
                  </div>
 
                  <div className={styles.classicStartWrapper}>
-                    <button className={styles.classicStartBtn} onClick={() => startGame(currentSettings.duration, currentSettings)}>Start</button>
+                    <button className={styles.classicStartBtn} onClick={() => void startGame(currentSettings.duration, currentSettings)}>Start</button>
                  </div>
+                 {startError && (
+                   <div className={styles.rankedStartError}>
+                     <p>{startError}</p>
+                     <div className={styles.actions}>
+                       <button className={styles.btnPrimary} onClick={() => void startGame(currentSettings.duration, currentSettings)}>Retry Ranked</button>
+                       <button className={styles.btnSecondary} onClick={() => startUnrankedGame(currentSettings.duration, currentSettings)}>Play Unranked</button>
+                     </div>
+                   </div>
+                 )}
               </div>
            </div>
 
@@ -560,7 +633,7 @@ export default function Game() {
             <WeaknessAnalysis />
 
             <div className={styles.homeActions}>
-               <button className={styles.btnPrimary} onClick={() => startGame(120, currentSettings)}>
+               <button className={styles.btnPrimary} onClick={() => void startGame(120, currentSettings)}>
                  <Play size={24} /> Press Space
                </button>
                <button className={styles.versusButton} onClick={openVersusMenu}>
@@ -568,6 +641,15 @@ export default function Game() {
                  <Swords size={18} /> Versus
                </button>
             </div>
+            {startError && (
+              <div className={styles.rankedStartError}>
+                <p>{startError}</p>
+                <div className={styles.actions}>
+                  <button className={styles.btnPrimary} onClick={() => void startGame(120, currentSettings)}>Retry Ranked</button>
+                  <button className={styles.btnSecondary} onClick={() => startUnrankedGame(120, currentSettings)}>Play Unranked</button>
+                </div>
+              </div>
+            )}
          </div>
 
          {isVersusOpen && (
@@ -760,14 +842,23 @@ export default function Game() {
 
        <div className={styles.questionStrip}>
          <div className={styles.questionContainer}>
-            {currentQuestion && (
-               <div className={styles.problem}>
-                  <span className={styles.num}>{currentQuestion.num1}</span>
-                  <span className={styles.op}>{currentQuestion.operation === '*' ? '×' : currentQuestion.operation === '/' ? '÷' : currentQuestion.operation}</span>
-                  <span className={styles.num}>{currentQuestion.num2}</span>
-                  {isClassic && <span className={styles.op}>=</span>}
-               </div>
-            )}
+            {currentQuestion && leaderboardRun && mode === 'solo' ? (
+              <canvas
+                ref={questionCanvasRef}
+                className={styles.rankedQuestionCanvas}
+                aria-hidden="true"
+                onCopy={(event) => event.preventDefault()}
+                onContextMenu={(event) => event.preventDefault()}
+                onDragStart={(event) => event.preventDefault()}
+              />
+            ) : currentQuestion ? (
+              <div className={styles.problem}>
+                <span className={styles.num}>{currentQuestion.num1}</span>
+                <span className={styles.op}>{currentQuestion.operation === '*' ? '×' : currentQuestion.operation === '/' ? '÷' : currentQuestion.operation}</span>
+                <span className={styles.num}>{currentQuestion.num2}</span>
+                {isClassic && <span className={styles.op}>=</span>}
+              </div>
+            ) : null}
             
             <input
               ref={inputRef}
@@ -787,7 +878,9 @@ export default function Game() {
             <p>
               {mode === 'versus'
                 ? <><b>Esc</b> leaves the match, <b>Enter</b> skips.</>
-                : <>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</>}
+                : leaderboardRun
+                  ? <>Ranked answers are verified after the run. Canvas rendering deters simple DOM bots but cannot hide browser memory or network data.</>
+                  : <>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</>}
             </p>
          </div>
        )}

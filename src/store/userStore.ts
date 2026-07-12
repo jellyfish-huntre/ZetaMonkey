@@ -7,10 +7,13 @@ import {
 } from '../lib/usernameValidation';
 import {
   isAllowedLeaderboardEntry,
-  MAX_LEADERBOARD_SCORE,
 } from '../lib/leaderboardValidation';
 import type { User, Session } from '@supabase/supabase-js';
 import { getCategoryLabel } from '../lib/mathUtils';
+import {
+  claimLeaderboardRun,
+  type PendingLeaderboardRun,
+} from '../lib/leaderboardRun';
 
 interface UserState {
   highScore: number;
@@ -19,7 +22,7 @@ interface UserState {
   theme: 'carbon' | 'classic' | 'nord' | 'light';
   user: User | null;
   session: Session | null;
-  localQualifyingGames: Array<{ score: number; qpm: number; accuracy: number; timestamp: number }>;
+  pendingLeaderboardRuns: PendingLeaderboardRun[];
   lastSyncedUserId: string | null;
   unsyncedGuestGames: number;
   unsyncedGuestQuestions: number;
@@ -41,8 +44,9 @@ interface UserState {
   fetchWeaknessAnalysis: (minQuestions?: number) => Promise<any[]>;
   fetchMistakes: () => Promise<any[]>;
   fetchLeaderboard: (type?: 'all-time' | 'daily') => Promise<any[]>;
-  submitLeaderboardScore: (score: number, qpm: number, accuracy: number) => Promise<void>;
-  addLocalQualifyingGame: (score: number, qpm: number, accuracy: number) => void;
+  addPendingLeaderboardRun: (run: PendingLeaderboardRun) => void;
+  claimVerifiedLeaderboardRun: (run: PendingLeaderboardRun) => Promise<void>;
+  claimPendingLeaderboardRuns: (accessToken: string) => Promise<void>;
   syncGuestData: (userId: string, guestGames: number, guestQuestions: number) => Promise<void>;
 }
 
@@ -55,7 +59,7 @@ export const useUserStore = create<UserState>()(
       theme: 'carbon',
       user: null,
       session: null,
-      localQualifyingGames: [],
+      pendingLeaderboardRuns: [],
       lastSyncedUserId: null,
       unsyncedGuestGames: 0,
       unsyncedGuestQuestions: 0,
@@ -175,6 +179,7 @@ export const useUserStore = create<UserState>()(
                
                // Sync data from guest session (use captured local guest stats)
                await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
+               await get().claimPendingLeaderboardRuns(data.session.access_token);
             }
          }
       },
@@ -208,6 +213,7 @@ export const useUserStore = create<UserState>()(
              }, { onConflict: 'id' });
                           // Sync data from guest session
               await get().syncGuestData(data.user.id, localTotalGames, localTotalQuestions);
+              await get().claimPendingLeaderboardRuns(data.session.access_token);
               set({ lastSyncedUserId: data.user.id });
           } else if (data.user && !data.session) {
              throw new Error("Please check your email to confirm your account.");
@@ -310,6 +316,7 @@ export const useUserStore = create<UserState>()(
                await supabase.from('profiles').upsert(newProfile, { onConflict: 'id' });
                set({ unsyncedGuestGames: 0, unsyncedGuestQuestions: 0 });
             }
+            await get().claimPendingLeaderboardRuns(data.session.access_token);
          }
       },
 
@@ -570,44 +577,33 @@ export const useUserStore = create<UserState>()(
         }));
       },
 
-      submitLeaderboardScore: async (score, qpm, accuracy) => {
-        const { user } = get();
-        if (!user) return;
-
-        if (score < 0 || score > MAX_LEADERBOARD_SCORE) {
-          console.warn(`Leaderboard score rejected: score must be between 0 and ${MAX_LEADERBOARD_SCORE}.`);
-          return;
-        }
-
-        const { error } = await supabase.from('leaderboard').insert({
-          user_id: user.id,
-          username: user.user_metadata.username || user.email?.split('@')[0],
-          score,
-          qpm,
-          accuracy
-        });
-
-        if (error) {
-          console.error('Error submitting leaderboard score:', error);
-        }
+      addPendingLeaderboardRun: (run) => {
+        const pending = get().pendingLeaderboardRuns;
+        if (pending.some((item) => item.runId === run.runId)) return;
+        set({ pendingLeaderboardRuns: [...pending, { runId: run.runId, runToken: run.runToken }] });
       },
-      addLocalQualifyingGame: (score, qpm, accuracy) => {
-        if (score < 0 || score > MAX_LEADERBOARD_SCORE) return;
 
-        const { localQualifyingGames } = get();
-        // Since we don't have individual question history for legacy guest sync,
-        // we just record the summary. Real history is tracked in gameStore.
-        set({
-          localQualifyingGames: [
-            ...localQualifyingGames,
-            { score, qpm, accuracy, timestamp: Date.now() }
-          ]
-        });
+      claimVerifiedLeaderboardRun: async (run) => {
+        const accessToken = get().session?.access_token;
+        if (!accessToken) throw new Error('Authentication required to claim this run.');
+        await claimLeaderboardRun(run, accessToken);
+        set({ pendingLeaderboardRuns: get().pendingLeaderboardRuns.filter((item) => item.runId !== run.runId) });
+      },
+
+      claimPendingLeaderboardRuns: async (accessToken) => {
+        const remaining: PendingLeaderboardRun[] = [];
+        for (const run of get().pendingLeaderboardRuns) {
+          try {
+            await claimLeaderboardRun(run, accessToken);
+          } catch (error) {
+            console.error('Error claiming verified guest leaderboard run:', error);
+            remaining.push(run);
+          }
+        }
+        set({ pendingLeaderboardRuns: remaining });
       },
 
       syncGuestData: async (userId: string, guestGames: number, guestQuestions: number) => {
-        const { localQualifyingGames } = get();
-        
         // 1. Sync stats (add INCREMENTS to cloud)
         const { data: profile } = await supabase
           .from('profiles')
@@ -640,14 +636,6 @@ export const useUserStore = create<UserState>()(
           document.documentElement.setAttribute('data-theme', profile.theme || 'carbon');
         }
 
-        // 2. Sync leaderboard scores
-        if (localQualifyingGames.length > 0) {
-          for (const game of localQualifyingGames) {
-            await get().submitLeaderboardScore(game.score, game.qpm, game.accuracy);
-            await get().recordGame(game.score, game.qpm, game.accuracy, []);
-          }
-          set({ localQualifyingGames: [] });
-        }
       }
     }),
     {
@@ -657,11 +645,17 @@ export const useUserStore = create<UserState>()(
         totalGames: state.totalGames,
         totalQuestionsAnswered: state.totalQuestionsAnswered,
         theme: state.theme,
-        localQualifyingGames: state.localQualifyingGames,
+        pendingLeaderboardRuns: state.pendingLeaderboardRuns,
         lastSyncedUserId: state.lastSyncedUserId,
         unsyncedGuestGames: state.unsyncedGuestGames,
         unsyncedGuestQuestions: state.unsyncedGuestQuestions,
-      }), 
+      }),
+      version: 2,
+      migrate: (persisted) => {
+        const state = (persisted ?? {}) as Record<string, unknown>;
+        delete state.localQualifyingGames;
+        return { ...state, pendingLeaderboardRuns: state.pendingLeaderboardRuns || [] };
+      },
     }
   )
 );

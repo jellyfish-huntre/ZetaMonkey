@@ -513,6 +513,29 @@
   gap: 1rem;
 }
 
+.rankedQuestionCanvas {
+  display: block;
+  width: min(520px, 88vw);
+  height: 120px;
+  color: var(--text-primary);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.rankedStartError,
+.verificationError {
+  margin-top: 1rem;
+  color: var(--text-primary);
+}
+
+.rankedStartError {
+  max-width: 560px;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  border-radius: 12px;
+}
+
 .problem {
   font-size: 5rem;
   font-weight: 700;
