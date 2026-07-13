@@ -111,7 +111,7 @@ create or replace function public.submit_leaderboard_run(
   p_transcript jsonb
 )
 returns table(score integer, qpm integer, accuracy integer, skips integer, eligible boolean, eligibility_reason text)
-language plpgsql security definer set search_path = public
+language plpgsql security definer set search_path = public, extensions
 as $$
 declare
   selected public.leaderboard_runs%rowtype;
