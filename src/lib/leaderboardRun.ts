@@ -47,7 +47,11 @@ interface SubmitResponse extends Omit<VerifiedLeaderboardResult, 'claimed'> {
   ok: true;
 }
 
-const request = async <T>(body: Record<string, unknown>, accessToken?: string | null): Promise<T> => {
+const request = async <T>(
+  body: Record<string, unknown>,
+  fallbackMessage: string,
+  accessToken?: string | null,
+): Promise<T> => {
   const response = await fetch('/api/leaderboard-run', {
     method: 'POST',
     headers: {
@@ -57,24 +61,27 @@ const request = async <T>(body: Record<string, unknown>, accessToken?: string | 
     body: JSON.stringify(body),
   });
   const data = await response.json().catch(() => ({})) as { error?: string };
-  if (!response.ok) throw new Error(data.error || 'Leaderboard verification is unavailable.');
+  if (!response.ok) throw new Error(fallbackMessage);
   return data as T;
 };
 
 export const prepareLeaderboardRun = (accessToken?: string | null) =>
-  request<PrepareResponse>({ action: 'prepare' }, accessToken);
+  request<PrepareResponse>({ action: 'prepare' }, 'Could not start a ranked game. Please try again.', accessToken);
 
 export const beginLeaderboardRun = (run: PendingLeaderboardRun) =>
-  request<BeginResponse>({ action: 'begin', ...run });
+  request<BeginResponse>({ action: 'begin', ...run }, 'Could not start a ranked game. Please try again.');
 
 export const submitLeaderboardRun = (
   run: PendingLeaderboardRun,
   transcript: LeaderboardTranscriptAction[],
-) => request<SubmitResponse>({ action: 'submit', ...run, transcript });
+) => request<SubmitResponse>(
+  { action: 'submit', ...run, transcript },
+  'Could not verify your score. Please try again.',
+);
 
 export const claimLeaderboardRun = (run: PendingLeaderboardRun, accessToken: string) =>
   request<{ ok: true; leaderboardId: string; alreadyClaimed: boolean }>(
     { action: 'claim', ...run },
+    'Could not add your score yet. Please try again.',
     accessToken,
   );
-

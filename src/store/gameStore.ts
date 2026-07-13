@@ -122,12 +122,12 @@ export const useGameStore = create<GameState>((set, get) => ({
         const prepared = await prepareLeaderboardRun(accessToken);
         if (prepared.questions.length !== 300
           || prepared.questions.some((question, index) => question.questionIndex !== index)) {
-          throw new Error('The server returned an invalid ranked question batch.');
+          throw new Error('Could not prepare this run. Please try again.');
         }
         const begun = await beginLeaderboardRun({ runId: prepared.runId, runToken: prepared.runToken });
         const serverDuration = Date.parse(begun.endsAt) - Date.parse(begun.startsAt);
         if (!Number.isFinite(serverDuration) || serverDuration !== 120_000) {
-          throw new Error('The server returned an invalid ranked timer.');
+          throw new Error('Could not start this run. Please try again.');
         }
         const localStartsAt = Date.now();
         const first = prepared.questions[0];

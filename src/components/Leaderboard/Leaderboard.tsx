@@ -61,7 +61,7 @@ export default function Leaderboard() {
         </div>
 
         <div className={styles.disclaimer}>
-          Only server-verified, two-minute games played with <strong>Standard Settings</strong> and <strong>Zero Skips</strong> qualify for the leaderboard.
+          Only verified two-minute games played with <strong>Standard Settings</strong> and <strong>Zero Skips</strong> qualify for the leaderboard.
         </div>
 
         {loading ? (

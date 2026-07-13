@@ -88,7 +88,7 @@ describe('protected solo runs', () => {
     await useGameStore.getState().startGame(120, DEFAULT_SETTINGS);
     expect(useGameStore.getState()).toMatchObject({
       status: 'idle',
-      startError: 'offline',
+      startError: 'Could not start a ranked game. Please try again.',
       leaderboardRun: null,
     });
   });

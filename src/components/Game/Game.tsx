@@ -240,13 +240,23 @@ export default function Game() {
       context.clearRect(0, 0, width, height);
       const color = getComputedStyle(canvas).color || '#fff';
       context.fillStyle = color;
-      context.textAlign = 'center';
+      context.textAlign = 'left';
       context.textBaseline = 'middle';
-      context.font = `700 ${Math.min(64, height * 0.56)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      const canvasStyle = getComputedStyle(canvas);
+      const fontSize = Number.parseFloat(canvasStyle.fontSize) || 80;
+      context.font = `${canvasStyle.fontWeight} ${fontSize}px ${canvasStyle.fontFamily}`;
       const operator = currentQuestion.operation === '*' ? '×'
         : currentQuestion.operation === '/' ? '÷'
           : currentQuestion.operation;
-      context.fillText(`${currentQuestion.num1}  ${operator}  ${currentQuestion.num2}`, width / 2, height / 2);
+      const parts = [String(currentQuestion.num1), operator, String(currentQuestion.num2)];
+      const gap = theme === 'classic' ? 12 : 24;
+      const partWidths = parts.map((part) => context.measureText(part).width);
+      const totalWidth = partWidths.reduce((total, partWidth) => total + partWidth, gap * 2);
+      let x = (width - totalWidth) / 2;
+      parts.forEach((part, index) => {
+        context.fillText(part, x, height / 2);
+        x += partWidths[index] + gap;
+      });
     };
 
     draw();
@@ -402,7 +412,7 @@ export default function Game() {
           </div>
 
           {isProtectedResult && leaderboardVerification === 'submitting' && (
-            <div className={styles.qualifyingBadge}>Verifying answers with the server…</div>
+            <div className={styles.qualifyingBadge}>Verifying score...</div>
           )}
           {isProtectedResult && leaderboardVerification === 'error' && (
             <div className={styles.verificationError}>
@@ -443,8 +453,7 @@ export default function Game() {
       <div className={styles.container}>
         <div className={styles.summary}>
           <div className={styles.gameOverBadge}>Ranked Solo</div>
-          <h1>Preparing 300 questions…</h1>
-          <p>The timer starts only after the complete server-generated batch is loaded.</p>
+          <h1>Preparing questions...</h1>
         </div>
       </div>
     );
@@ -878,9 +887,7 @@ export default function Game() {
             <p>
               {mode === 'versus'
                 ? <><b>Esc</b> leaves the match, <b>Enter</b> skips.</>
-                : leaderboardRun
-                  ? <>Ranked answers are verified after the run. Canvas rendering deters simple DOM bots but cannot hide browser memory or network data.</>
-                  : <>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</>}
+                : <>Press <b>Esc</b> to quit, <b>Space</b> to restart, <b>Enter</b> to skip.</>}
             </p>
          </div>
        )}
