@@ -4,7 +4,7 @@
 
 Versus mode requires the SQL in `versus_schema.sql` to be applied to the Supabase project. In Supabase Realtime settings, keep Realtime enabled and allow public channels so guests can create and join fruit-code rooms.
 
-Server-verified solo leaderboard runs require `leaderboard_runs_schema.sql` to be applied after the existing leaderboard table and functions. This revokes direct client leaderboard inserts and installs the private run-verification RPCs. Default two-minute solo games fail closed as ranked runs; if the server is unavailable, the UI offers an explicit unranked fallback.
+Server-verified solo leaderboard runs require `leaderboard_runs_schema.sql` to be applied after the existing leaderboard table and functions. This revokes direct client leaderboard inserts and installs the private run-verification RPCs. The endpoint uses `VITE_SUPABASE_URL` with `SUPABASE_URL` retained only as a compatibility fallback. Default two-minute solo games fail closed as ranked runs; if the server is unavailable, the UI offers an explicit unranked fallback.
 
 Use `vercel dev` when testing ranked runs locally so `/api/leaderboard-run` is available; the plain Vite development server does not execute Vercel functions.
 

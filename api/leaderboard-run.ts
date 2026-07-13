@@ -2,7 +2,7 @@ import {
   createRunToken,
   generateRankedQuestionBatch,
   hashRunToken,
-} from './leaderboard-run-core';
+} from './leaderboard-run-core.js';
 
 const json = (body: Record<string, unknown>, status: number) =>
   Response.json(body, {
@@ -21,7 +21,7 @@ interface AuthUser {
 }
 
 const serverConfig = () => ({
-  url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
+  url: process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL,
   key: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
 });
 
@@ -171,4 +171,3 @@ export async function handleLeaderboardRun(request: Request): Promise<Response> 
     return json({ ok: false, error: message }, status);
   }
 }
-

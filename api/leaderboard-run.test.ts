@@ -17,7 +17,7 @@ const request = (body: Record<string, unknown>, token?: string) => new Request('
 
 describe('leaderboard run API', () => {
   it('prepares an anonymous batch without exposing answers', async () => {
-    vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([
       { run_id: 'run-1', prepared_expires_at: '2026-07-12T12:02:00Z' },
@@ -42,7 +42,7 @@ describe('leaderboard run API', () => {
   });
 
   it('passes only the transcript and hashed credential to verification', async () => {
-    vi.stubEnv('SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret');
     const fetchMock = vi.fn().mockResolvedValue(Response.json([
       { score: 1, qpm: 1, accuracy: 100, skips: 0, eligible: true, eligibility_reason: null },
@@ -60,4 +60,3 @@ describe('leaderboard run API', () => {
     expect(JSON.stringify(rpcBody)).not.toContain('raw-token');
   });
 });
-
