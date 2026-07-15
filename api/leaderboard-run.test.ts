@@ -20,19 +20,53 @@ describe('leaderboard run API', () => {
     vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co');
     vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json([
-      { run_id: 'run-1', prepared_expires_at: '2026-07-12T12:02:00Z' },
+      { run_id: 'run-1', prepared_expires_at: '2026-07-12T12:15:00Z' },
     ])));
 
     const response = await handleLeaderboardRun(request({ action: 'prepare' }));
     expect(response.status).toBe(200);
-    const data = await response.json() as { questions: Array<Record<string, unknown>>; runToken: string };
+    const data = await response.json() as {
+      questions: Array<Record<string, unknown>>;
+      runToken: string;
+      preparedExpiresAt: string;
+    };
     expect(data.questions).toHaveLength(300);
     expect(data.questions.every((question) => !('answer' in question))).toBe(true);
     expect(data.runToken.length).toBeGreaterThan(30);
+    expect(data.preparedExpiresAt).toBe('2026-07-12T12:15:00Z');
     expect(fetch).toHaveBeenCalledWith(
       'https://project.supabase.co/rest/v1/rpc/prepare_leaderboard_run',
       expect.objectContaining({ method: 'POST' }),
     );
+  });
+
+  it('passes the client start time to recoverable activation', async () => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co');
+    vi.stubEnv('SUPABASE_SECRET_KEY', 'server-secret');
+    const fetchMock = vi.fn().mockResolvedValue(Response.json([{
+      starts_at: '2026-07-12T12:00:00Z',
+      ends_at: '2026-07-12T12:02:00Z',
+      activated_at: '2026-07-12T12:00:01Z',
+    }]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await handleLeaderboardRun(request({
+      action: 'begin',
+      runId: 'run-1',
+      runToken: 'raw-token',
+      clientStartedAt: '2026-07-12T12:00:00Z',
+    }));
+
+    expect(response.status).toBe(200);
+    const rpcBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as Record<string, unknown>;
+    expect(rpcBody.p_client_started_at).toBe('2026-07-12T12:00:00Z');
+    expect(rpcBody.p_token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(rpcBody)).not.toContain('raw-token');
+    expect(await response.json()).toMatchObject({
+      startsAt: '2026-07-12T12:00:00Z',
+      endsAt: '2026-07-12T12:02:00Z',
+      activatedAt: '2026-07-12T12:00:01Z',
+    });
   });
 
   it('requires credentials and a transcript for protected actions', async () => {

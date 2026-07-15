@@ -10,9 +10,10 @@ create table if not exists public.leaderboard_runs (
   questions jsonb not null,
   answer_key jsonb not null,
   prepared_at timestamptz not null default now(),
-  prepared_expires_at timestamptz not null default (now() + interval '2 minutes'),
+  prepared_expires_at timestamptz not null default (now() + interval '15 minutes'),
   starts_at timestamptz,
   ends_at timestamptz,
+  activated_at timestamptz,
   submitted_at timestamptz,
   transcript_hash text,
   verified_score integer,
@@ -29,6 +30,10 @@ create table if not exists public.leaderboard_runs (
 );
 
 alter table public.leaderboard_runs enable row level security;
+alter table public.leaderboard_runs
+  alter column prepared_expires_at set default (now() + interval '15 minutes');
+alter table public.leaderboard_runs
+  add column if not exists activated_at timestamptz;
 revoke all on table public.leaderboard_runs from anon, authenticated;
 revoke insert on table public.leaderboard from anon, authenticated;
 
@@ -44,8 +49,11 @@ declare
 begin
   update public.leaderboard_runs
   set status = 'expired', eligibility_reason = 'run_expired'
-  where status in ('prepared', 'active')
-    and coalesce(ends_at + interval '30 seconds', prepared_expires_at) < now();
+  where (status = 'prepared' and prepared_expires_at < now())
+     or (status = 'active' and greatest(
+       ends_at + interval '30 seconds',
+       coalesce(activated_at, starts_at) + interval '30 seconds'
+     ) < now());
   get diagnostics changed = row_count;
   return changed;
 end;
@@ -78,18 +86,27 @@ begin
 end;
 $$;
 
-create or replace function public.begin_leaderboard_run(p_run_id uuid, p_token_hash text)
-returns table(starts_at timestamptz, ends_at timestamptz)
+drop function if exists public.begin_leaderboard_run(uuid, text);
+
+create or replace function public.begin_leaderboard_run(
+  p_run_id uuid,
+  p_token_hash text,
+  p_client_started_at timestamptz
+)
+returns table(starts_at timestamptz, ends_at timestamptz, activated_at timestamptz)
 language plpgsql security definer set search_path = public
 as $$
 declare
   selected public.leaderboard_runs%rowtype;
+  effective_starts_at timestamptz;
 begin
+  if p_client_started_at is null then raise exception 'INVALID_CLIENT_START'; end if;
+
   select * into selected from public.leaderboard_runs
   where id = p_run_id and token_hash = p_token_hash for update;
   if not found then raise exception 'RUN_NOT_FOUND'; end if;
   if selected.status = 'active' then
-    return query select selected.starts_at, selected.ends_at;
+    return query select selected.starts_at, selected.ends_at, selected.activated_at;
     return;
   end if;
   if selected.status <> 'prepared' then raise exception 'RUN_ALREADY_FINISHED'; end if;
@@ -97,11 +114,19 @@ begin
     raise exception 'RUN_EXPIRED';
   end if;
 
+  effective_starts_at := greatest(selected.prepared_at, least(p_client_started_at, now()));
+  if effective_starts_at < now() - interval '10 minutes' then
+    raise exception 'RUN_ACTIVATION_EXPIRED';
+  end if;
+
   return query
   update public.leaderboard_runs
-  set status = 'active', starts_at = now(), ends_at = now() + interval '120 seconds'
+  set status = 'active',
+      starts_at = effective_starts_at,
+      ends_at = effective_starts_at + interval '120 seconds',
+      activated_at = now()
   where id = p_run_id
-  returning leaderboard_runs.starts_at, leaderboard_runs.ends_at;
+  returning leaderboard_runs.starts_at, leaderboard_runs.ends_at, leaderboard_runs.activated_at;
 end;
 $$;
 
@@ -147,7 +172,10 @@ begin
   end if;
   if selected.status <> 'active' then raise exception 'INVALID_RUN_STATE'; end if;
   if now() < selected.ends_at then raise exception 'TOO_EARLY_TO_SUBMIT'; end if;
-  if now() > selected.ends_at + interval '30 seconds' then
+  if now() > greatest(
+    selected.ends_at + interval '30 seconds',
+    coalesce(selected.activated_at, selected.starts_at) + interval '30 seconds'
+  ) then
     raise exception 'RUN_EXPIRED';
   end if;
 
@@ -239,12 +267,12 @@ $$;
 
 revoke all on function public.prepare_leaderboard_run(text, uuid, jsonb, jsonb) from public;
 revoke all on function public.expire_leaderboard_runs() from public;
-revoke all on function public.begin_leaderboard_run(uuid, text) from public;
+revoke all on function public.begin_leaderboard_run(uuid, text, timestamptz) from public;
 revoke all on function public.submit_leaderboard_run(uuid, text, jsonb) from public;
 revoke all on function public.claim_leaderboard_run(uuid, text, uuid, text) from public;
 grant execute on function public.prepare_leaderboard_run(text, uuid, jsonb, jsonb) to service_role;
 grant execute on function public.expire_leaderboard_runs() to service_role;
-grant execute on function public.begin_leaderboard_run(uuid, text) to service_role;
+grant execute on function public.begin_leaderboard_run(uuid, text, timestamptz) to service_role;
 grant execute on function public.submit_leaderboard_run(uuid, text, jsonb) to service_role;
 grant execute on function public.claim_leaderboard_run(uuid, text, uuid, text) to service_role;
 

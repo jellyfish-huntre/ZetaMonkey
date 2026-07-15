@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGameStore } from '../../store/gameStore';
+import {
+  LEADERBOARD_STANDBY_MIN_VALIDITY_MS,
+  useGameStore,
+} from '../../store/gameStore';
 import { useUserStore } from '../../store/userStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useVersusStore } from '../../store/versusStore';
-import { type Operation } from '../../lib/mathEngine';
+import { isDefaultSettings, type Operation } from '../../lib/mathEngine';
 import { type FruitId } from '../../lib/versus';
 import {
   Apple,
@@ -74,6 +77,9 @@ export default function Game() {
     startError,
     startUnrankedGame,
     verifyLeaderboardRun,
+    standbyLeaderboardRun,
+    warmLeaderboardRun,
+    invalidateLeaderboardStandby,
   } = useGameStore();
 
   const { 
@@ -116,6 +122,35 @@ export default function Game() {
   const questionCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const isVersusOpen = versusView !== 'closed';
+  const rankedSettingsEligible = isDefaultSettings(currentSettings);
+
+  useEffect(() => {
+    if (!rankedSettingsEligible) {
+      invalidateLeaderboardStandby();
+      return;
+    }
+
+    void warmLeaderboardRun().catch(() => undefined);
+    if (!standbyLeaderboardRun) return;
+
+    const refreshIn = Date.parse(standbyLeaderboardRun.preparedExpiresAt)
+      - Date.now()
+      - LEADERBOARD_STANDBY_MIN_VALIDITY_MS;
+    if (refreshIn <= 0) {
+      void warmLeaderboardRun().catch(() => undefined);
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void warmLeaderboardRun().catch(() => undefined);
+    }, refreshIn);
+    return () => window.clearTimeout(timeout);
+  }, [
+    rankedSettingsEligible,
+    user?.id,
+    standbyLeaderboardRun,
+    warmLeaderboardRun,
+    invalidateLeaderboardStandby,
+  ]);
 
   const openVersusMenu = () => {
     setJoinCode([]);
@@ -215,12 +250,14 @@ export default function Game() {
 
   // Focus input and clear state on game start
   useEffect(() => {
-    if (status === 'playing') {
+    if (status !== 'playing') return;
+    const frame = window.requestAnimationFrame(() => {
       setInput('');
       if (inputRef.current) {
         inputRef.current.focus();
       }
-    }
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [status]);
 
   useEffect(() => {
@@ -443,17 +480,6 @@ export default function Game() {
                Back to Menu
             </button>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (status === 'preparing') {
-    return (
-      <div className={styles.container}>
-        <div className={styles.summary}>
-          <div className={styles.gameOverBadge}>Ranked Solo</div>
-          <h1>Preparing questions...</h1>
         </div>
       </div>
     );

@@ -20,6 +20,11 @@ export interface PendingLeaderboardRun {
   runToken: string;
 }
 
+export interface PreparedLeaderboardRun extends PendingLeaderboardRun {
+  preparedExpiresAt: string;
+  questions: RankedQuestionPrompt[];
+}
+
 export interface VerifiedLeaderboardResult {
   score: number;
   qpm: number;
@@ -30,17 +35,15 @@ export interface VerifiedLeaderboardResult {
   claimed: boolean;
 }
 
-interface PrepareResponse {
+interface PrepareResponse extends PreparedLeaderboardRun {
   ok: true;
-  runId: string;
-  runToken: string;
-  questions: RankedQuestionPrompt[];
 }
 
 interface BeginResponse {
   ok: true;
   startsAt: string;
   endsAt: string;
+  activatedAt: string;
 }
 
 interface SubmitResponse extends Omit<VerifiedLeaderboardResult, 'claimed'> {
@@ -68,8 +71,11 @@ const request = async <T>(
 export const prepareLeaderboardRun = (accessToken?: string | null) =>
   request<PrepareResponse>({ action: 'prepare' }, 'Could not start a ranked game. Please try again.', accessToken);
 
-export const beginLeaderboardRun = (run: PendingLeaderboardRun) =>
-  request<BeginResponse>({ action: 'begin', ...run }, 'Could not start a ranked game. Please try again.');
+export const beginLeaderboardRun = (run: PendingLeaderboardRun, clientStartedAt: string) =>
+  request<BeginResponse>(
+    { action: 'begin', ...run, clientStartedAt },
+    'Could not start a ranked game. Please try again.',
+  );
 
 export const submitLeaderboardRun = (
   run: PendingLeaderboardRun,

@@ -6,7 +6,7 @@ Versus mode requires the SQL in `versus_schema.sql` to be applied to the Supabas
 
 Server-verified solo leaderboard runs require `leaderboard_runs_schema.sql` to be applied after the existing leaderboard table and functions. This revokes direct client leaderboard inserts and installs the private run-verification RPCs. The endpoint uses `VITE_SUPABASE_URL` with `SUPABASE_URL` retained only as a compatibility fallback. Default two-minute solo games fail closed as ranked runs; if the server is unavailable, the UI offers an explicit unranked fallback.
 
-Use `vercel dev` when testing ranked runs locally so `/api/leaderboard-run` is available; the plain Vite development server does not execute Vercel functions.
+`npm run dev` mounts the ranked-run API through Vite's server-only development middleware, so `/api/leaderboard-run` is available without linking the repository to a Vercel project.
 
 Configure the public client variables `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in Vercel. The legacy `VITE_SUPABASE_ANON_KEY` remains supported.
 

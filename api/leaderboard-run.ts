@@ -106,13 +106,27 @@ export async function handleLeaderboardRun(request: Request): Promise<Response> 
     const tokenHash = hashRunToken(runToken);
 
     if (action === 'begin') {
-      const rows = await rpc<Array<{ starts_at: string; ends_at: string }>>('begin_leaderboard_run', {
+      const clientStartedAt = typeof body.clientStartedAt === 'string' ? body.clientStartedAt : '';
+      if (!clientStartedAt || !Number.isFinite(Date.parse(clientStartedAt))) {
+        return json({ ok: false, error: 'Invalid client start time' }, 400);
+      }
+      const rows = await rpc<Array<{
+        starts_at: string;
+        ends_at: string;
+        activated_at: string;
+      }>>('begin_leaderboard_run', {
         p_run_id: runId,
         p_token_hash: tokenHash,
+        p_client_started_at: clientStartedAt,
       });
       const row = rows[0];
       if (!row) throw new Error('RUN_NOT_STARTED');
-      return json({ ok: true, startsAt: row.starts_at, endsAt: row.ends_at }, 200);
+      return json({
+        ok: true,
+        startsAt: row.starts_at,
+        endsAt: row.ends_at,
+        activatedAt: row.activated_at,
+      }, 200);
     }
 
     if (action === 'submit') {

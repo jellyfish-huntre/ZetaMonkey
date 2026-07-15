@@ -18,6 +18,7 @@ import {
   submitLeaderboardRun,
   type LeaderboardTranscriptAction,
   type PendingLeaderboardRun,
+  type PreparedLeaderboardRun,
   type RankedQuestionPrompt,
   type VerifiedLeaderboardResult,
 } from '../lib/leaderboardRun';
@@ -31,8 +32,26 @@ export interface GameStartContext {
   endsAt?: number;
 }
 
+const LEADERBOARD_DURATION_MS = 120_000;
+export const LEADERBOARD_STANDBY_MIN_VALIDITY_MS = 10 * 60_000;
+const LEADERBOARD_ACTIVATION_RECOVERY_MS = 10 * 60_000;
+const ACTIVATION_RETRY_DELAYS_MS = [0, 250, 500, 1_000, 2_000, 5_000, 10_000];
+
+interface StandbyLeaderboardRun extends PreparedLeaderboardRun {
+  ownerKey: string;
+}
+
+interface ActiveLeaderboardRunState extends PendingLeaderboardRun {
+  questions: RankedQuestionPrompt[];
+  currentIndex: number;
+  transcript: LeaderboardTranscriptAction[];
+  startedAt: number;
+  activationDeadline: number;
+  activationStatus: 'pending' | 'active' | 'error';
+}
+
 interface GameState {
-  status: 'idle' | 'preparing' | 'playing' | 'finished';
+  status: 'idle' | 'playing' | 'finished';
   score: number;
   timeLeft: number;
   duration: number;
@@ -53,12 +72,10 @@ interface GameState {
   seed: number | null;
   endsAt: number | null;
   randomSource: RandomSource;
-  leaderboardRun: (PendingLeaderboardRun & {
-    questions: RankedQuestionPrompt[];
-    currentIndex: number;
-    transcript: LeaderboardTranscriptAction[];
-    startedAt: number;
-  }) | null;
+  leaderboardRun: ActiveLeaderboardRunState | null;
+  standbyLeaderboardRun: StandbyLeaderboardRun | null;
+  standbyPreparationStatus: 'idle' | 'loading' | 'ready' | 'error';
+  queuedRankedStart: boolean;
   leaderboardVerification: 'idle' | 'submitting' | 'verified' | 'error';
   leaderboardResult: VerifiedLeaderboardResult | null;
   startError: string | null;
@@ -73,6 +90,10 @@ interface GameState {
     context?: GameStartContext,
   ) => Promise<void>;
   startUnrankedGame: (duration?: number, settings?: GameSettings, targetCategory?: Category) => void;
+  warmLeaderboardRun: () => Promise<void>;
+  invalidateLeaderboardStandby: () => void;
+  startPreparedLeaderboardRun: (settings: GameSettings) => boolean;
+  activateLeaderboardRun: (runId: string) => Promise<boolean>;
   verifyLeaderboardRun: () => Promise<void>;
   submitAnswer: (answer: string) => void;
   resetGame: () => void;
@@ -81,6 +102,26 @@ interface GameState {
   incrementMistakes: () => void;
   endGame: () => void;
 }
+
+let standbyPreparationPromise: Promise<void> | null = null;
+const activationPromises = new Map<string, Promise<boolean>>();
+
+const leaderboardOwnerKey = () => useUserStore.getState().user?.id ?? 'guest';
+
+const isUsableStandby = (
+  standby: StandbyLeaderboardRun | null,
+  ownerKey = leaderboardOwnerKey(),
+): standby is StandbyLeaderboardRun => Boolean(
+  standby
+  && standby.ownerKey === ownerKey
+  && Date.parse(standby.preparedExpiresAt) - Date.now() >= LEADERBOARD_STANDBY_MIN_VALIDITY_MS
+  && standby.questions.length === 300
+  && standby.questions.every((question, index) => question.questionIndex === index),
+);
+
+const wait = (milliseconds: number) => new Promise<void>((resolve) => {
+  setTimeout(resolve, milliseconds);
+});
 
 export const useGameStore = create<GameState>((set, get) => ({
   status: 'idle',
@@ -98,10 +139,135 @@ export const useGameStore = create<GameState>((set, get) => ({
   endsAt: null,
   randomSource: Math.random,
   leaderboardRun: null,
+  standbyLeaderboardRun: null,
+  standbyPreparationStatus: 'idle',
+  queuedRankedStart: false,
   leaderboardVerification: 'idle',
   leaderboardResult: null,
   startError: null,
   finishReason: null,
+
+  warmLeaderboardRun: async () => {
+    const ownerKey = leaderboardOwnerKey();
+    if (isUsableStandby(get().standbyLeaderboardRun, ownerKey)) {
+      if (get().standbyPreparationStatus !== 'ready') set({ standbyPreparationStatus: 'ready' });
+      return;
+    }
+    if (standbyPreparationPromise) return standbyPreparationPromise;
+
+    set({ standbyLeaderboardRun: null, standbyPreparationStatus: 'loading' });
+    standbyPreparationPromise = (async () => {
+      try {
+        const accessToken = useUserStore.getState().session?.access_token;
+        const prepared = await prepareLeaderboardRun(accessToken);
+        if (leaderboardOwnerKey() !== ownerKey || !isUsableStandby({ ...prepared, ownerKey }, ownerKey)) {
+          throw new Error('Could not prepare this run. Please try again.');
+        }
+        set({
+          standbyLeaderboardRun: { ...prepared, ownerKey },
+          standbyPreparationStatus: 'ready',
+        });
+      } catch (error) {
+        set({ standbyPreparationStatus: 'error' });
+        throw error;
+      } finally {
+        standbyPreparationPromise = null;
+      }
+    })();
+
+    return standbyPreparationPromise;
+  },
+
+  invalidateLeaderboardStandby: () => {
+    set({
+      standbyLeaderboardRun: null,
+      standbyPreparationStatus: 'idle',
+      queuedRankedStart: false,
+    });
+  },
+
+  startPreparedLeaderboardRun: (settings) => {
+    const prepared = get().standbyLeaderboardRun;
+    if (!isUsableStandby(prepared)) return false;
+    const first = prepared.questions[0];
+    if (!first) return false;
+
+    const localStartsAt = Date.now();
+    const run: ActiveLeaderboardRunState = {
+      runId: prepared.runId,
+      runToken: prepared.runToken,
+      questions: prepared.questions,
+      currentIndex: 0,
+      transcript: [],
+      startedAt: localStartsAt,
+      activationDeadline: localStartsAt + LEADERBOARD_ACTIVATION_RECOVERY_MS,
+      activationStatus: 'pending',
+    };
+
+    set({
+      status: 'playing', score: 0, timeLeft: 120, duration: 120,
+      currentQuestion: rankedQuestion(first), gameHistory: [], skipsCount: 0, mistakes: 0,
+      settings, targetCategory: null, mode: 'solo', seed: null,
+      endsAt: localStartsAt + LEADERBOARD_DURATION_MS,
+      randomSource: Math.random, finishReason: null,
+      leaderboardRun: run,
+      standbyLeaderboardRun: null,
+      standbyPreparationStatus: 'idle',
+      queuedRankedStart: false,
+      leaderboardVerification: 'idle', leaderboardResult: null, startError: null,
+    });
+
+    void get().activateLeaderboardRun(run.runId);
+    void get().warmLeaderboardRun().catch(() => undefined);
+    return true;
+  },
+
+  activateLeaderboardRun: async (runId) => {
+    const existing = activationPromises.get(runId);
+    if (existing) return existing;
+
+    const activation = (async () => {
+      let attempt = 0;
+      while (true) {
+        const run = get().leaderboardRun;
+        if (!run || run.runId !== runId) return false;
+        if (run.activationStatus === 'active') return true;
+        if (Date.now() > run.activationDeadline) {
+          set((state) => state.leaderboardRun?.runId === runId ? {
+            leaderboardRun: { ...state.leaderboardRun, activationStatus: 'error' },
+          } : {});
+          return false;
+        }
+
+        const delay = ACTIVATION_RETRY_DELAYS_MS[Math.min(attempt, ACTIVATION_RETRY_DELAYS_MS.length - 1)];
+        if (delay > 0) await wait(delay);
+        const current = get().leaderboardRun;
+        if (!current || current.runId !== runId) return false;
+
+        try {
+          const begun = await beginLeaderboardRun(
+            { runId: current.runId, runToken: current.runToken },
+            new Date(current.startedAt).toISOString(),
+          );
+          const serverDuration = Date.parse(begun.endsAt) - Date.parse(begun.startsAt);
+          if (!Number.isFinite(serverDuration) || serverDuration !== LEADERBOARD_DURATION_MS) {
+            throw new Error('Could not start this run. Please try again.');
+          }
+          set((state) => state.leaderboardRun?.runId === runId ? {
+            leaderboardRun: { ...state.leaderboardRun, activationStatus: 'active' },
+          } : {});
+          return true;
+        } catch {
+          attempt += 1;
+        }
+      }
+    })().finally(() => {
+      activationPromises.delete(runId);
+    });
+
+    activationPromises.set(runId, activation);
+    return activation;
+  },
 
   startGame: async (
     duration = 120,
@@ -116,44 +282,16 @@ export const useGameStore = create<GameState>((set, get) => ({
       && isDefaultSettings(settings);
 
     if (isProtectedCandidate) {
-      set({ status: 'preparing', startError: null, leaderboardResult: null, leaderboardVerification: 'idle' });
+      set({ queuedRankedStart: true, startError: null });
+      if (get().startPreparedLeaderboardRun(settings)) return;
       try {
-        const accessToken = useUserStore.getState().session?.access_token;
-        const prepared = await prepareLeaderboardRun(accessToken);
-        if (prepared.questions.length !== 300
-          || prepared.questions.some((question, index) => question.questionIndex !== index)) {
-          throw new Error('Could not prepare this run. Please try again.');
-        }
-        const begun = await beginLeaderboardRun({ runId: prepared.runId, runToken: prepared.runToken });
-        const serverDuration = Date.parse(begun.endsAt) - Date.parse(begun.startsAt);
-        if (!Number.isFinite(serverDuration) || serverDuration !== 120_000) {
-          throw new Error('Could not start this run. Please try again.');
-        }
-        const localStartsAt = Date.now();
-        const first = prepared.questions[0];
-        if (!first) throw new Error('The ranked question batch was empty.');
-        set({
-          status: 'playing', score: 0, timeLeft: 120, duration: 120,
-          currentQuestion: rankedQuestion(first), gameHistory: [], skipsCount: 0, mistakes: 0,
-          settings, targetCategory: null, mode: 'solo', seed: null,
-          endsAt: localStartsAt + serverDuration,
-          randomSource: Math.random, finishReason: null,
-          leaderboardRun: {
-            runId: prepared.runId,
-            runToken: prepared.runToken,
-            questions: prepared.questions,
-            currentIndex: 0,
-            transcript: [],
-            startedAt: localStartsAt,
-          },
-          leaderboardVerification: 'idle', leaderboardResult: null, startError: null,
-        } as Partial<GameState>);
+        await get().warmLeaderboardRun();
+        if (get().queuedRankedStart) get().startPreparedLeaderboardRun(settings);
         return;
       } catch (error) {
         set({
-          status: 'idle',
+          queuedRankedStart: false,
           startError: error instanceof Error ? error.message : 'Could not prepare a ranked run.',
-          leaderboardRun: null,
         });
         return;
       }
@@ -192,6 +330,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       randomSource,
       finishReason: null,
       leaderboardRun: null,
+      queuedRankedStart: false,
       leaderboardVerification: 'idle',
       leaderboardResult: null,
       startError: null,
@@ -205,7 +344,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       || state.leaderboardVerification === 'verified') return;
     set({ leaderboardVerification: 'submitting' });
     try {
-      const run = state.leaderboardRun;
+      const activated = await get().activateLeaderboardRun(state.leaderboardRun.runId);
+      if (!activated) throw new Error('Could not verify your score. Please try again.');
+      const run = get().leaderboardRun;
+      if (!run || run.runId !== state.leaderboardRun.runId) return;
       const verified = await submitLeaderboardRun(run, run.transcript);
       let claimed = false;
       if (verified.eligible) {
@@ -320,6 +462,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       randomSource: Math.random,
       finishReason: null,
       leaderboardRun: null,
+      queuedRankedStart: false,
       leaderboardVerification: 'idle',
       leaderboardResult: null,
       startError: null,
