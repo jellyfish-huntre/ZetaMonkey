@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUserStore } from '../store/userStore';
+import { useUserStore, weaknessCacheKey, type WeaknessAnalysisResult } from '../store/userStore';
 import { useGameStore } from '../store/gameStore';
 import { getCategoryLabel, type Category } from '../lib/mathUtils';
 import { ArrowLeft, Beaker, CheckCircle2, Clock, Crosshair, HelpCircle, Eye, EyeOff } from 'lucide-react';
@@ -21,26 +21,27 @@ const ALL_CATEGORIES: Category[] = [
 
 export default function LabPage() {
   const navigate = useNavigate();
-  const { fetchWeaknessAnalysis, user } = useUserStore();
+  const { fetchWeaknessAnalysis, user, weaknessAnalysisCache } = useUserStore();
   const { startGame, settings } = useGameStore();
-  const [stats, setStats] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(true);
+  const cached = user ? weaknessAnalysisCache[weaknessCacheKey(user.id, 0)] : undefined;
+  const [loading, setLoading] = useState(Boolean(user && !cached));
   const [hideEmpty, setHideEmpty] = useState(false);
+  const stats = useMemo(() => (cached?.data || []).reduce<Record<string, WeaknessAnalysisResult>>((acc, current) => {
+    acc[current.category] = current;
+    return acc;
+  }, {}), [cached]);
 
   useEffect(() => {
+    let active = true;
     const load = async () => {
-      if (user) {
-        const data = await fetchWeaknessAnalysis(0);
-        const statsMap = data.reduce((acc: any, curr: any) => {
-          acc[curr.category] = curr;
-          return acc;
-        }, {});
-        setStats(statsMap);
-      }
-      setLoading(false);
+      if (!user) return setLoading(false);
+      setLoading(!cached);
+      if (!cached || cached.stale) await fetchWeaknessAnalysis(0);
+      if (active) setLoading(false);
     };
-    load();
-  }, [user, fetchWeaknessAnalysis]);
+    void load();
+    return () => { active = false; };
+  }, [user, cached, fetchWeaknessAnalysis]);
 
   if (loading) return <div className={styles.loading}>Accessing the Lab...</div>;
 

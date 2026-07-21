@@ -1,30 +1,39 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUserStore } from '../../store/userStore';
+import { useUserStore, type LeaderboardFilter } from '../../store/userStore';
 import { ArrowLeft, Medal, Crown } from 'lucide-react';
 import styles from './Leaderboard.module.css';
 
+const LEADERBOARD_REFRESH_MS = 5 * 60 * 1000;
+
 export default function Leaderboard() {
   const navigate = useNavigate();
-  const { fetchLeaderboard } = useUserStore();
-  const [entries, setEntries] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all-time' | 'daily'>('all-time');
+  const { fetchLeaderboard, leaderboardCache } = useUserStore();
+  const [filter, setFilter] = useState<LeaderboardFilter>('all-time');
+  const cached = leaderboardCache[filter];
+  const entries = cached?.entries || [];
+  const [loading, setLoading] = useState(!cached);
 
   useEffect(() => {
+    let active = true;
     const loadLeaderboard = async () => {
-      setLoading(true);
+      const needsRefresh = !cached
+        || cached.stale
+        || Date.now() - cached.fetchedAt >= LEADERBOARD_REFRESH_MS;
+      setLoading(!cached);
+      if (!needsRefresh) return;
+
       try {
-        const data = await fetchLeaderboard(filter);
-        setEntries(data);
+        await fetchLeaderboard(filter);
       } catch (error) {
         console.error('Error loading leaderboard:', error);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
-    loadLeaderboard();
-  }, [fetchLeaderboard, filter]);
+    void loadLeaderboard();
+    return () => { active = false; };
+  }, [fetchLeaderboard, filter, cached]);
 
   const getRankIcon = (index: number) => {
     switch (index) {

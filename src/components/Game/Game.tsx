@@ -27,6 +27,7 @@ import {
   Sliders,
   Beaker,
   Swords,
+  MessageSquare,
   X,
   type LucideIcon
 } from 'lucide-react';
@@ -34,6 +35,7 @@ import styles from './Game.module.css';
 import PerformanceGraph from '../Charts/PerformanceGraph'; 
 import AuthModal from '../Auth/AuthModal';
 import SettingsModal from '../Settings/SettingsModal';
+import FeedbackModal from '../Feedback/FeedbackModal';
 import { WeaknessAnalysis } from '../Analytics/WeaknessAnalysis';
 
 type VersusView = 'closed' | 'menu' | 'createLobby' | 'join' | 'joinLobby';
@@ -116,6 +118,7 @@ export default function Game() {
   const [input, setInput] = useState('');
   const [showAuth, setShowAuth] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [versusView, setVersusView] = useState<VersusView>('closed');
   const [joinCode, setJoinCode] = useState<FruitId[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -323,13 +326,18 @@ export default function Game() {
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Global game shortcuts must never consume keystrokes while a modal or
+      // other interactive control owns keyboard focus.
+      const target = e.target as HTMLElement | null;
+      const isInteractiveTarget = target !== inputRef.current
+        && Boolean(target?.closest('input, textarea, select, button, [contenteditable="true"]'));
+      if (showAuth || showSettings || showFeedback || isInteractiveTarget) return;
+
       // Allow Space to restart game ANYTIME
       if (e.code === 'Space') {
+         if (isVersusOpen || mode === 'versus') return;
          // Prevent default scrolling
          e.preventDefault();
-         
-         // If we are in settings or auth, maybe we shouldn't restart?
-         if (showAuth || showSettings || isVersusOpen || mode === 'versus') return;
 
          setInput('');
          void startGame(120, currentSettings);
@@ -367,7 +375,7 @@ export default function Game() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, mode, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings, isVersusOpen, incrementMistakes, leaveRoom]);
+  }, [status, mode, startGame, resetGame, skipQuestion, endGame, currentSettings, showAuth, showSettings, showFeedback, isVersusOpen, incrementMistakes, leaveRoom]);
 
   if (status === 'finished') {
     if (mode === 'versus') {
@@ -514,6 +522,7 @@ export default function Game() {
                 <button className={styles.navLink} onClick={() => navigate('/leaderboard')}>Leaderboard</button>
               </div>
               <div className={styles.navRight}>
+                <button className={styles.navLink} onClick={() => setShowFeedback(true)}>Feedback</button>
                 <button className={styles.navLink} onClick={() => setShowSettings(true)}>Options</button>
                 {user ? (
                    <div className={styles.userMenu}>
@@ -615,6 +624,7 @@ export default function Game() {
 
            {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
            {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+           {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
         </div>
       );
     }
@@ -631,6 +641,9 @@ export default function Game() {
               </button>
             </div>
             <div className={styles.navRight}>
+              <button className={styles.navLink} onClick={() => setShowFeedback(true)}>
+                <MessageSquare size={18} /> Feedback
+              </button>
               <button className={styles.navLink} onClick={() => setShowSettings(true)}>
                 <Sliders size={18} /> Options
               </button>
@@ -822,6 +835,7 @@ export default function Game() {
 
          {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
          {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+         {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
       </div>
     );
   }

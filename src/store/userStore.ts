@@ -9,11 +9,48 @@ import {
   isAllowedLeaderboardEntry,
 } from '../lib/leaderboardValidation';
 import type { User, Session } from '@supabase/supabase-js';
-import { getCategoryLabel } from '../lib/mathUtils';
+import { getCategoryLabel, type Category } from '../lib/mathUtils';
 import {
   claimLeaderboardRun,
   type PendingLeaderboardRun,
 } from '../lib/leaderboardRun';
+
+export type LeaderboardFilter = 'all-time' | 'daily';
+export const weaknessCacheKey = (userId: string, minQuestions = 3) => `${userId}:${minQuestions}`;
+
+export interface WeaknessAnalysisResult {
+  category: Category;
+  avgTime: number;
+  accuracy: number;
+  totalQuestions: number;
+}
+
+export interface LeaderboardEntry {
+  id: string;
+  username: string;
+  score: number;
+  qpm: number;
+  accuracy: number;
+  created_at: string;
+}
+
+interface CachedWeaknessAnalysis {
+  data: WeaknessAnalysisResult[];
+  fetchedAt: number;
+  stale: boolean;
+}
+
+interface CachedLeaderboard {
+  entries: LeaderboardEntry[];
+  fetchedAt: number;
+  stale: boolean;
+}
+
+export interface FeedbackSubmission {
+  type: 'general' | 'bug' | 'feature';
+  message: string;
+  email?: string;
+}
 
 interface UserState {
   highScore: number;
@@ -23,6 +60,8 @@ interface UserState {
   user: User | null;
   session: Session | null;
   pendingLeaderboardRuns: PendingLeaderboardRun[];
+  weaknessAnalysisCache: Record<string, CachedWeaknessAnalysis>;
+  leaderboardCache: Partial<Record<LeaderboardFilter, CachedLeaderboard>>;
   lastSyncedUserId: string | null;
   unsyncedGuestGames: number;
   unsyncedGuestQuestions: number;
@@ -41,9 +80,12 @@ interface UserState {
   // History Actions
   recordGame: (score: number, qpm: number, accuracy: number, history: any[], targetCategory?: string | null) => Promise<void>;
   fetchHistory: () => Promise<any[]>;
-  fetchWeaknessAnalysis: (minQuestions?: number) => Promise<any[]>;
+  fetchWeaknessAnalysis: (minQuestions?: number) => Promise<WeaknessAnalysisResult[]>;
   fetchMistakes: () => Promise<any[]>;
-  fetchLeaderboard: (type?: 'all-time' | 'daily') => Promise<any[]>;
+  fetchLeaderboard: (type?: LeaderboardFilter) => Promise<LeaderboardEntry[]>;
+  invalidateWeaknessAnalysis: (userId?: string) => void;
+  invalidateLeaderboard: () => void;
+  submitFeedback: (feedback: FeedbackSubmission) => Promise<void>;
   addPendingLeaderboardRun: (run: PendingLeaderboardRun) => void;
   claimVerifiedLeaderboardRun: (run: PendingLeaderboardRun) => Promise<void>;
   claimPendingLeaderboardRuns: (accessToken: string) => Promise<void>;
@@ -60,6 +102,8 @@ export const useUserStore = create<UserState>()(
       user: null,
       session: null,
       pendingLeaderboardRuns: [],
+      weaknessAnalysisCache: {},
+      leaderboardCache: {},
       lastSyncedUserId: null,
       unsyncedGuestGames: 0,
       unsyncedGuestQuestions: 0,
@@ -222,7 +266,7 @@ export const useUserStore = create<UserState>()(
 
       signOut: async () => {
          await supabase.auth.signOut();
-         set({ user: null, session: null, highScore: 0, totalGames: 0, totalQuestionsAnswered: 0, lastSyncedUserId: null, unsyncedGuestGames: 0, unsyncedGuestQuestions: 0 });
+         set({ user: null, session: null, highScore: 0, totalGames: 0, totalQuestionsAnswered: 0, lastSyncedUserId: null, unsyncedGuestGames: 0, unsyncedGuestQuestions: 0, weaknessAnalysisCache: {} });
       },
 
       checkSession: async () => {
@@ -372,12 +416,15 @@ export const useUserStore = create<UserState>()(
               if (respError) console.error('Error recording question responses:', respError);
             }
           }
+
+          if (gameData) get().invalidateWeaknessAnalysis(user.id);
         }
       },
 
       fetchWeaknessAnalysis: async (minQuestions = 3) => {
         const { user } = get();
         if (!user) return [];
+        const cacheKey = weaknessCacheKey(user.id, minQuestions);
 
         // Fetch last 500 responses to identify trends
         const { data, error } = await supabase
@@ -389,7 +436,7 @@ export const useUserStore = create<UserState>()(
 
         if (error || !data) {
           console.error('Error fetching weakness analysis:', error);
-          return [];
+          return get().weaknessAnalysisCache[cacheKey]?.data || [];
         }
 
         // Aggregate by dynamic traits and categories
@@ -421,7 +468,7 @@ export const useUserStore = create<UserState>()(
         // Convert to array and calculate metrics
         const results = Object.entries(analysis)
           .map(([category, stats]) => ({
-            category,
+            category: category as Category,
             avgTime: stats.totalTime / stats.count,
             accuracy: (stats.count / (stats.count + stats.mistakes)) * 100, // "Effective Accuracy"
             totalQuestions: stats.count
@@ -506,6 +553,12 @@ export const useUserStore = create<UserState>()(
             return b.avgTime - a.avgTime;
         });
 
+        set((state) => ({
+          weaknessAnalysisCache: {
+            ...state.weaknessAnalysisCache,
+            [cacheKey]: { data: finalResults, fetchedAt: Date.now(), stale: false },
+          },
+        }));
         return finalResults;
       },
 
@@ -546,23 +599,23 @@ export const useUserStore = create<UserState>()(
         return data || [];
       },
 
-      fetchLeaderboard: async (type: 'all-time' | 'daily' = 'all-time') => {
+      fetchLeaderboard: async (type: LeaderboardFilter = 'all-time') => {
         const { data, error } = await supabase.rpc('get_unique_leaderboard', {
           time_filter: type === 'daily' ? '24 hours' : null
         });
           
         if (error) {
           console.error('Error fetching leaderboard:', error);
-          return [];
+          return get().leaderboardCache[type]?.entries || [];
         }
 
-        if (!data) return [];
+        if (!data) return get().leaderboardCache[type]?.entries || [];
 
         // Implement tiebreakers:
         // 1. Score (DESC)
         // 2. Accuracy (DESC)
         // 3. Created At (ASC - oldest first)
-        return [...data].filter(isAllowedLeaderboardEntry).sort((a, b) => {
+        const entries = [...data].filter(isAllowedLeaderboardEntry).sort((a, b) => {
           if (b.score !== a.score) {
             return b.score - a.score;
           }
@@ -575,6 +628,51 @@ export const useUserStore = create<UserState>()(
           ...entry,
           username: sanitizeUsernameForDisplay(entry.username || ''),
         }));
+        set((state) => ({
+          leaderboardCache: {
+            ...state.leaderboardCache,
+            [type]: { entries, fetchedAt: Date.now(), stale: false },
+          },
+        }));
+        return entries;
+      },
+
+      invalidateWeaknessAnalysis: (userId) => {
+        const cacheKey = userId || get().user?.id;
+        if (!cacheKey) return;
+        set((state) => ({
+          weaknessAnalysisCache: Object.fromEntries(
+            Object.entries(state.weaknessAnalysisCache).map(([key, value]) => [
+              key,
+              key.startsWith(`${cacheKey}:`) ? { ...value, stale: true } : value,
+            ]),
+          ),
+        }));
+      },
+
+      invalidateLeaderboard: () => {
+        set((state) => ({
+          leaderboardCache: Object.fromEntries(
+            Object.entries(state.leaderboardCache).map(([key, value]) => [
+              key,
+              value ? { ...value, stale: true } : value,
+            ]),
+          ) as UserState['leaderboardCache'],
+        }));
+      },
+
+      submitFeedback: async ({ type, message, email }) => {
+        const trimmedMessage = message.trim();
+        if (!trimmedMessage) throw new Error('Please enter your feedback.');
+
+        const { user } = get();
+        const { error } = await supabase.from('feedback_submissions').insert({
+          user_id: user?.id || null,
+          feedback_type: type,
+          message: trimmedMessage,
+          contact_email: email?.trim() || user?.email || null,
+        });
+        if (error) throw error;
       },
 
       addPendingLeaderboardRun: (run) => {
@@ -588,6 +686,7 @@ export const useUserStore = create<UserState>()(
         if (!accessToken) throw new Error('Authentication required to claim this run.');
         await claimLeaderboardRun(run, accessToken);
         set({ pendingLeaderboardRuns: get().pendingLeaderboardRuns.filter((item) => item.runId !== run.runId) });
+        get().invalidateLeaderboard();
       },
 
       claimPendingLeaderboardRuns: async (accessToken) => {
@@ -595,6 +694,7 @@ export const useUserStore = create<UserState>()(
         for (const run of get().pendingLeaderboardRuns) {
           try {
             await claimLeaderboardRun(run, accessToken);
+            get().invalidateLeaderboard();
           } catch (error) {
             console.error('Error claiming verified guest leaderboard run:', error);
             remaining.push(run);
@@ -646,15 +746,25 @@ export const useUserStore = create<UserState>()(
         totalQuestionsAnswered: state.totalQuestionsAnswered,
         theme: state.theme,
         pendingLeaderboardRuns: state.pendingLeaderboardRuns,
+        weaknessAnalysisCache: state.weaknessAnalysisCache,
+        leaderboardCache: state.leaderboardCache,
         lastSyncedUserId: state.lastSyncedUserId,
         unsyncedGuestGames: state.unsyncedGuestGames,
         unsyncedGuestQuestions: state.unsyncedGuestQuestions,
       }),
-      version: 2,
+      version: 4,
       migrate: (persisted) => {
         const state = (persisted ?? {}) as Record<string, unknown>;
         delete state.localQualifyingGames;
-        return { ...state, pendingLeaderboardRuns: state.pendingLeaderboardRuns || [] };
+        if (!state.weaknessAnalysisCache || Object.keys(state.weaknessAnalysisCache as object).some(key => !key.includes(':'))) {
+          state.weaknessAnalysisCache = {};
+        }
+        return {
+          ...state,
+          pendingLeaderboardRuns: state.pendingLeaderboardRuns || [],
+          weaknessAnalysisCache: state.weaknessAnalysisCache || {},
+          leaderboardCache: state.leaderboardCache || {},
+        };
       },
     }
   )

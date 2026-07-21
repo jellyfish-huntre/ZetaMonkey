@@ -1,33 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { useUserStore } from '../../store/userStore';
+import { useUserStore, weaknessCacheKey, type WeaknessAnalysisResult } from '../../store/userStore';
 import { useGameStore } from '../../store/gameStore';
-import { getCategoryLabel, type Category } from '../../lib/mathUtils';
+import { getCategoryLabel } from '../../lib/mathUtils';
 import { Target, AlertCircle, Clock, CheckCircle2, ChevronRight } from 'lucide-react';
 import styles from './WeaknessAnalysis.module.css';
 
-interface Weakness {
-  category: Category;
-  avgTime: number;
-  accuracy: number;
-  totalQuestions: number;
-}
-
 export const WeaknessAnalysis: React.FC = () => {
-  const { fetchWeaknessAnalysis, user } = useUserStore();
+  const { fetchWeaknessAnalysis, user, weaknessAnalysisCache } = useUserStore();
   const { startGame, settings } = useGameStore();
-  const [weaknesses, setWeaknesses] = useState<Weakness[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = user ? weaknessAnalysisCache[weaknessCacheKey(user.id)] : undefined;
+  const [weaknesses, setWeaknesses] = useState<WeaknessAnalysisResult[]>(cached?.data || []);
+  const [loading, setLoading] = useState(Boolean(user && !cached));
 
   useEffect(() => {
+    let active = true;
     const loadAnalysis = async () => {
-      if (user) {
-        const data = await fetchWeaknessAnalysis();
-        setWeaknesses(data);
+      if (!user) return;
+
+      if (cached) {
+        setWeaknesses(cached.data);
+        setLoading(false);
+      } else {
+        setLoading(true);
       }
-      setLoading(false);
+
+      if (!cached || cached.stale) {
+        const data = await fetchWeaknessAnalysis();
+        if (active) setWeaknesses(data);
+      }
+      if (active) setLoading(false);
     };
-    loadAnalysis();
-  }, [user, fetchWeaknessAnalysis]);
+    void loadAnalysis();
+    return () => { active = false; };
+  }, [user, cached, fetchWeaknessAnalysis]);
 
   if (!user) return null;
   if (loading) return <div className={styles.loading}>Analyzing patterns...</div>;
