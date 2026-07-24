@@ -306,8 +306,7 @@ export default function Game() {
   }, [currentQuestion, leaderboardRun, status, theme]);
 
   // Handle Input Changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
+  const applyAnswerInput = (val: string) => {
     // Allow only numbers
     if (!/^-?\d*$/.test(val)) return;
     
@@ -321,6 +320,27 @@ export default function Game() {
         setInput('');
       }
     }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    applyAnswerInput(e.target.value);
+  };
+
+  const pressNumpadKey = (key: string) => {
+    if (key === 'backspace') {
+      if (input.length > 0) {
+        incrementMistakes();
+        setInput(current => current.slice(0, -1));
+      }
+      return;
+    }
+
+    if (key === '-') {
+      applyAnswerInput(input.startsWith('-') ? input.slice(1) : `-${input}`);
+      return;
+    }
+
+    applyAnswerInput(`${input}${key}`);
   };
 
   // Keyboard controls
@@ -520,9 +540,10 @@ export default function Game() {
            <header className={styles.topNav}>
               <div className={styles.navLeft}>
                 <button className={styles.navLink} onClick={() => navigate('/leaderboard')}>Leaderboard</button>
+                <button className={styles.navLink} onClick={() => navigate('/lab')}>Lab</button>
               </div>
               <div className={styles.navRight}>
-                <button className={styles.navLink} onClick={() => setShowFeedback(true)}>Feedback</button>
+                <button className={`${styles.navLink} ${styles.feedbackNavButton}`} onClick={() => setShowFeedback(true)}>Feedback</button>
                 <button className={styles.navLink} onClick={() => setShowSettings(true)}>Options</button>
                 {user ? (
                    <div className={styles.userMenu}>
@@ -625,6 +646,13 @@ export default function Game() {
            {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
            {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
            {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+           <button
+             className={styles.mobileFeedback}
+             onClick={() => setShowFeedback(true)}
+             aria-label="Send feedback"
+           >
+             <MessageSquare size={17} /> Feedback
+           </button>
         </div>
       );
     }
@@ -641,7 +669,7 @@ export default function Game() {
               </button>
             </div>
             <div className={styles.navRight}>
-              <button className={styles.navLink} onClick={() => setShowFeedback(true)}>
+              <button className={`${styles.navLink} ${styles.feedbackNavButton}`} onClick={() => setShowFeedback(true)}>
                 <MessageSquare size={18} /> Feedback
               </button>
               <button className={styles.navLink} onClick={() => setShowSettings(true)}>
@@ -836,6 +864,13 @@ export default function Game() {
          {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
          {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
          {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+         <button
+           className={styles.mobileFeedback}
+           onClick={() => setShowFeedback(true)}
+           aria-label="Send feedback"
+         >
+           <MessageSquare size={17} /> Feedback
+         </button>
       </div>
     );
   }
@@ -915,11 +950,38 @@ export default function Game() {
               className={styles.input}
               value={input}
               onChange={handleChange}
+              inputMode="none"
+              aria-label="Answer"
               spellCheck={false}
               autoComplete="off"
               autoFocus
             />
          </div>
+       </div>
+
+       <div className={styles.mobileNumpad} aria-label="Number pad">
+           {['1', '2', '3', '4', '5', '6', '7', '8', '9', '-', '0', 'backspace'].map(key => (
+             <button
+               type="button"
+               key={key}
+               className={`${styles.numpadKey} ${key === 'backspace' ? styles.numpadUtility : ''}`}
+               onPointerDown={event => event.preventDefault()}
+               onClick={() => pressNumpadKey(key)}
+               aria-label={key === 'backspace' ? 'Delete last digit' : key === '-' ? 'Toggle negative' : key}
+             >
+               {key === 'backspace' ? '⌫' : key === '-' ? '−' : key}
+             </button>
+           ))}
+           <button
+             type="button"
+             className={styles.mobileSkip}
+             onClick={() => {
+               skipQuestion();
+               setInput('');
+             }}
+           >
+             Skip question
+           </button>
        </div>
        
        {!isClassic && (

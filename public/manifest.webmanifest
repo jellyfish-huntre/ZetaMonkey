@@ -1,0 +1,16 @@
+{
+  "name": "ZetaMonkey",
+  "short_name": "ZetaMonkey",
+  "description": "Fast arithmetic practice.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#323437",
+  "theme_color": "#323437",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ]
+}
